@@ -1,38 +1,26 @@
 import cv2
+from vision import load_haar_face_detector, detect_faces, draw_boxes
 
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    )
+# Load detector once (clean reuse)
+face_detector = load_haar_face_detector()
 
-img = cv2.imread("data/faces.png")
+# Load image
+img = cv2.imread("data/samples/face.png")
 
 if img is None:
     print("Inexisting image.")
     exit()
 
-# grayscale conversion
+# Convert to grayscale
 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-#detect the faces
-faces = face_cascade.detectMultiScale(
-    gray,
-    scaleFactor=1.1,
-    minNeighbors=5,
-    minSize=(60,60)
-)
+# Detect faces using vision.py
+faces = detect_faces(face_detector, gray)
 
-# drawing the rectangle
-for (x,y,w,h) in faces:
-    cv2.rectangle(
-        img,
-        (x, y),
-        (x + w, y + h),
-        (0, 255, 0),
-        2
-    )
+# Draw bounding boxes using vision.py
+img_with_boxes = draw_boxes(img, faces)
 
-#print the output
-cv2.imshow("Face Detection - Haar Cascades", img)
+# Show result
+cv2.imshow("Face Detection - Haar Cascades", img_with_boxes)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-
