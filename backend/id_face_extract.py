@@ -4,7 +4,7 @@ from vision import load_haar_face_detector, extract_id_face
 def main():
     detector = load_haar_face_detector()
 
-    input_path = "data/sample/id.jpg"
+    input_path = "data/samples/id.jpg"
     output_path = "data/outputs/id_face.jpg"
 
     img = cv2.imread(input_path)
