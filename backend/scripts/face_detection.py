@@ -1,11 +1,11 @@
 import cv2
-from vision import load_haar_face_detector, detect_faces, draw_boxes
+from backend.core.vision import load_haar_face_detector, detect_faces, draw_boxes
 
 # Load detector once (clean reuse)
 face_detector = load_haar_face_detector()
 
 # Load image
-img = cv2.imread("data/samples/face.png")
+img = cv2.imread("backend/data/private/face.png")
 
 if img is None:
     print("Inexisting image.")

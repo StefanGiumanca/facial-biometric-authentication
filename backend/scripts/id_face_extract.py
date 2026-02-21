@@ -1,11 +1,11 @@
 import cv2
-from vision import load_haar_face_detector, extract_id_face
+from backend.core.vision import load_haar_face_detector, extract_id_face
 
 def main():
     detector = load_haar_face_detector()
 
-    input_path = "data/samples/id.jpg"
-    output_path = "data/outputs/id_face.jpg"
+    input_path = "backend/data/private/id.jpg"
+    output_path = "backend/data/outputs/id_face.jpg"
 
     img = cv2.imread(input_path)
     if img is None:

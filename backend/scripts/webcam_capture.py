@@ -1,5 +1,5 @@
 import cv2
-from vision import load_haar_face_detector, detect_faces, draw_boxes
+from backend.core.vision import load_haar_face_detector, detect_faces, draw_boxes
 
 def main():
     detector = load_haar_face_detector()
@@ -31,7 +31,7 @@ def main():
             else:
                 (x, y, w, h) = faces[0]
                 face_crop = frame[y:y+h, x:x+w]
-                saved = cv2.imwrite("data/outputs/selfie_face.jpg", face_crop)
+                saved = cv2.imwrite("backend/data/outputs/selfie_face.jpg", face_crop)
                 print("Saved selfie face." if saved else "Failed to save selfie face.")
 
         # q for quiting camera
