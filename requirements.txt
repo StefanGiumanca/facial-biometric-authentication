@@ -5,3 +5,4 @@ face_recognition_models==0.3.0
 numpy==2.4.2
 opencv-python==4.13.0.92
 pillow==12.1.1
+mediapipe==0.10.14
