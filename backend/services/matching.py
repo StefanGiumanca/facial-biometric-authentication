@@ -1,7 +1,7 @@
 import face_recognition
 import numpy as np
 
-def match_faces(selfie_img, id_img, accept_threshold=0.45, review_threshold=0.60):
+def match_faces(selfie_img, id_img, accept_threshold=0.50, review_threshold=0.60):
     selfie_encodings = face_recognition.face_encodings(selfie_img)
     id_encodings = face_recognition.face_encodings(id_img)
 

@@ -11,3 +11,5 @@ __pycache__/
 # Sensitive / generated data
 backend/data/private/
 backend/data/outputs/
+backend/data/selfies/
+backend/data/uploads/

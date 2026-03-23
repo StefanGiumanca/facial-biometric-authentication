@@ -99,3 +99,23 @@ def evaluate_similarity(score: float, accept: float = 0.90, review: float = 0.75
         return "REVIEW"
     return "REJECT"
 
+def evaluate_names(expected_last: str, expected_first: str,
+                   extracted_last: str | None, extracted_first: str | None,
+                   accept: float = 0.90, review: float = 0.75) -> dict:
+    last_score = name_similarity
+
+def parse_romanian_id(full_text: str, series_text: str | None = None) -> dict:
+    last_name, first_name = extract_names_from_mrz(full_text)
+
+    candidates = re.findall(r"\b\d{13}\b", full_text)
+    valid_cnps = [c for c in candidates if is_valid_cnp(c)]
+    cnp = valid_cnps[0] if len(valid_cnps) == 1 else None
+
+    series_number = extract_series_from_text(series_text) if series_text else None
+
+    return {
+        "last_name": last_name,
+        "first_name": first_name,
+        "cnp": cnp,
+        "series_number": series_number,
+    }
