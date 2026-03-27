@@ -87,3 +87,28 @@ def analyze_blink_sequence(frames_bgr, ear_threshold=0.20, required_blinks=3):
         "ear_threshold": ear_threshold,
         "analyzed_frames": analyzed_frames,
     }
+
+def extract_frames_from_video(video_path, max_frames=200):
+    cap = cv2.VideoCapture(video_path)
+
+    frames = []
+    count = 0
+
+    while cap.isOpened() and count < max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frames.append(frame)
+        count += 1
+
+    cap.release()
+    return frames
+
+def analyze_blink_video(video_path):
+    frames = extract_frames_from_video(video_path)
+
+    if len(frames) == 0:
+        return {"ok": False, "error": "No frames extracted from video"}
+
+    return analyze_blink_sequence(frames)

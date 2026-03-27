@@ -9,7 +9,7 @@ from backend.core.vision import load_haar_face_detector, extract_id_face
 from backend.services.document_parser import parse_romanian_id
 from backend.services.ocr_engine import build_reader, ocr_full_text, ocr_series_text_dynamic
 from backend.services.matching import match_faces
-from backend.services.liveness import analyze_blink_sequence
+from backend.services.liveness import analyze_blink_sequence, analyze_blink_video
 
 
 router = APIRouter()
@@ -158,6 +158,12 @@ async def face_match():
 
     session = sessions[session_id]
 
+    if session.get("liveness") is not True:
+        return {
+            "ok" : False,
+            "error" : "Liveness check failed"
+        }
+
     selfie_path = session["selfie_path"]
     id_face_path = session["id_face_path"]
 
@@ -189,33 +195,55 @@ async def face_match():
     }
 
 @router.post("/kyc/liveness")       # endpoint for liveness detection
-async def liveness(files: list[UploadFile]):
+async def liveness(file: UploadFile = File(...)):
+
     if current_session_id is None:
         return {"ok": False, "error": "No active session"}
 
     session_id = current_session_id
-    print(f"[LIVENESS] session={session_id}")
+    print(f"[LIVENESS VIDEO] session={session_id}")
 
-    if len(files) == 0:
-        return {"ok": False, "error": "No frames uploaded"}
+    contents = await file.read()
 
-    frames_bgr = []
+    video_filename = f"{uuid.uuid4()}.mp4"
+    video_path = OUTPUTS_DIR / video_filename
 
-    for file in files:
-        contents = await file.read()
-        np_arr = np.frombuffer(contents, np.uint8)
-        frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    with open(video_path, "wb") as f:
+        f.write(contents)
 
-        if frame_bgr is not None:
-            frames_bgr.append(frame_bgr)
+    result = analyze_blink_video(str(video_path))
 
-    if len(frames_bgr) == 0:
-        return {"ok": False, "error": "Could not decode any frame"}
+    if not result["ok"]:
+        return result
 
-    result = analyze_blink_sequence(frames_bgr)
     sessions[session_id]["liveness"] = result["passed"]
 
     return {
         "session_id": session_id,
         **result
+    }
+
+@router.get("/kyc/session/status")
+def session_status():
+    if current_session_id is None:
+        return {
+            "ok": False,
+            "error": "No active session"
+        }
+
+    session = sessions[current_session_id]
+
+    return {
+        "ok": True,
+        "session_id": current_session_id,
+        "document_uploaded": session["document_path"] is not None,
+        "id_face_extracted": session["id_face_path"] is not None,
+        "selfie_uploaded": session["selfie_path"] is not None,
+        "liveness_passed": session["liveness"] is True,
+        "ready_for_face_match": (
+            session["id_face_path"] is not None
+            and session["selfie_path"] is not None
+            and session["liveness"] is True
+        ),
+        "session_data": session
     }
