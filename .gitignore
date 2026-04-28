@@ -13,3 +13,10 @@ backend/data/private/
 backend/data/outputs/
 backend/data/selfies/
 backend/data/uploads/
+
+# Documentation
+ADMIN_FEATURE_IMPLEMENTATION.md
+DEV_START.md
+SECURITY_HARDENING_SUMMARY.md
+SECURITY_HARDENING_TEST_PLAN.md
+SECURITY_LOCK_TEST_PLAN.md

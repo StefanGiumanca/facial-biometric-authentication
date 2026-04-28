@@ -18,7 +18,10 @@ type SessionStatus = {
 
 type FaceMatchResult = {
   ok?: boolean;
+  passed?: boolean;
   decision?: string;
+  session_status?: string;
+  reason?: string;
   distance?: number;
   accept_threshold?: number;
   review_threshold?: number;
@@ -65,16 +68,16 @@ export default function ResultScreen() {
     }
   };
 
-  const decision = matchResult?.decision;
-  const isAccepted = decision === 'ACCEPTED';
+  const decision = matchResult?.session_status || matchResult?.decision;
+  const isAccepted = decision === 'ACCEPTED' || matchResult?.final_decision === 'APPROVED';
   const needsReview = decision === 'MANUAL_REVIEW';
   const isRejected = decision === 'REJECTED';
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 4 of 4</Text>
-        <Text style={styles.title}>Verification result</Text>
+        <Text style={styles.step}>Step 5 of 5</Text>
+        <Text style={styles.title}>Verification check</Text>
 
         {isLoading && <Text style={styles.subtitle}>Checking session status and face match result...</Text>}
 
@@ -107,6 +110,9 @@ export default function ResultScreen() {
               isRejected && styles.rejectedPanel,
             ]}>
             <Text style={styles.resultTitle}>{decisionLabel(decision)}</Text>
+            {matchResult.reason && <Text style={styles.resultText}>{matchResult.reason}</Text>}
+            <StatusRow label="Final check passed" value={matchResult.passed === true || isAccepted} />
+            <DetailRow label="Decision" value={String(decision ?? 'n/a')} />
             <Text style={styles.resultText}>
               Face distance: {typeof matchResult.distance === 'number' ? matchResult.distance.toFixed(4) : 'n/a'}
             </Text>
@@ -115,6 +121,9 @@ export default function ResultScreen() {
             </Text>
             <Text style={styles.resultText}>
               Review threshold: {String(matchResult.review_threshold ?? 'n/a')}
+            </Text>
+            <Text style={styles.resultHint}>
+              The selfie gate uses a more permissive threshold earlier in the flow. This final check is stricter and can send the session to manual review.
             </Text>
           </View>
         )}
@@ -143,8 +152,21 @@ function StatusRow({ label, value }: { label: string; value?: boolean }) {
   );
 }
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.statusRow}>
+      <Text style={styles.statusLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
 function decisionLabel(decision?: string) {
   if (decision === 'ACCEPTED') {
+    return 'Identity verified';
+  }
+
+  if (decision === 'APPROVED') {
     return 'Identity verified';
   }
 
@@ -215,6 +237,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  resultHint: {
+    color: '#94A3B8',
+    fontSize: 13,
+    lineHeight: 19,
+  },
   statusRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -225,6 +252,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   statusValue: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  detailValue: {
+    color: '#E2E8F0',
     fontSize: 15,
     fontWeight: '800',
   },

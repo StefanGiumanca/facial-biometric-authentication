@@ -1,12 +1,13 @@
 import os
-
-from fastapi import APIRouter, UploadFile, File
-from pydantic import BaseModel
-import cv2
 import uuid
 from pathlib import Path
-import numpy as np
+from typing import Annotated
+
+import cv2
 import face_recognition
+import numpy as np
+from fastapi import APIRouter, UploadFile, File
+from pydantic import BaseModel
 from backend.core.vision import load_haar_face_detector, extract_id_face
 from backend.services.document_parser import parse_romanian_id, validate_reviewed_document_fields
 from backend.services.ocr_engine import build_reader, ocr_full_text, ocr_series_text_dynamic
@@ -16,12 +17,8 @@ from backend.services.db_service import create_session_record, log_audit_event, 
 from backend.services.security_policy import (
     register_security_failure,
     ensure_session_not_locked,
-    get_session_security_status,
-    handle_final_face_match_failure,
     SELFIE_GATE_ACCEPT_DISTANCE,
     SELFIE_GATE_REVIEW_DISTANCE,
-    FINAL_FACE_MATCH_ACCEPT_DISTANCE,
-    FINAL_FACE_MATCH_REVIEW_DISTANCE,
     FACE_MATCH_THRESHOLD,
 )
 
@@ -89,12 +86,12 @@ async def extract_document(file: UploadFile = File(...)):
         return {"ok": False, "error": "No active session"}
 
     session_id = current_session_id
-
+    
     print(f"[DOCUMENT] session={session_id}")
 
     # Security: Check if session is locked
     ensure_session_not_locked(session_id)
-
+        
     contents = await file.read()
 
     np_arr = np.frombuffer(contents, np.uint8)
@@ -102,7 +99,7 @@ async def extract_document(file: UploadFile = File(...)):
 
     if img_bgr is None:
         return {"ok" : False, "error" : "Could not decode image"}
-
+    
     document_filename = f"{uuid.uuid4()}.jpg"
     document_abs_path = ID_CARDS_DIR / document_filename
     document_rel_path = f"data/uploads/id_cards/{document_filename}"
@@ -173,10 +170,10 @@ def validate_document_review(payload: DocumentReviewPayload):
         return {"ok": False, "error": "No active session"}
 
     session_id = current_session_id
-
+    
     # Security: Check if session is locked
     ensure_session_not_locked(session_id)
-
+    
     session = sessions[session_id]
     ocr_fields = session.get("document_fields")
 
@@ -207,7 +204,7 @@ def validate_document_review(payload: DocumentReviewPayload):
         **result
     }
 
-@router.post("/kyc/selfie")         # endpoint for saving the selfie path
+@router.post("/kyc/selfie")         # endpoint for saving the selfie path 
 async def capture_selfie(file: UploadFile = File(...)):
 
     if current_session_id is None:
@@ -215,7 +212,7 @@ async def capture_selfie(file: UploadFile = File(...)):
 
     session_id = current_session_id
     session = sessions[session_id]
-
+    
     print(f"[SELFIE] session={session_id}")
 
     # Security: Check if session is locked
@@ -238,7 +235,7 @@ async def capture_selfie(file: UploadFile = File(...)):
             "ok" : False,
             "error" : "Could not decode image"
         }
-
+    
     rgb = cv2.cvtColor(img_br, cv2.COLOR_BGR2RGB)
     faces = face_recognition.face_locations(rgb)
 
@@ -249,14 +246,14 @@ async def capture_selfie(file: UploadFile = File(...)):
             "ok": False,
             "error": "No face detected. Please take a clear selfie of your face."
         }
-
+    
     if len(faces) > 1:
         log_audit_event(session_id, "SELFIE_VALIDATION_FAILED", f"Multiple faces detected in selfie: {len(faces)}")
         return {
             "ok": False,
             "error": "Multiple faces detected. Please take the selfie alone."
         }
-
+    
     # Security Gate: Compare selfie face to ID document face
     try:
         id_face_path = session.get("id_face_path")
@@ -266,17 +263,17 @@ async def capture_selfie(file: UploadFile = File(...)):
                 "ok": False,
                 "error": "ID face data is missing. Please re-upload the document."
             }
-
+        
         id_face_abs = BACKEND_DIR / id_face_path
         id_face_img = cv2.imread(str(id_face_abs))
-
+        
         if id_face_img is None:
             log_audit_event(session_id, "VALIDATION_FAILED", "Could not load ID face for comparison")
             return {
                 "ok": False,
                 "error": "Could not verify against ID. Please try again."
             }
-
+        
         # Compare selfie to ID face
         id_rgb = cv2.cvtColor(id_face_img, cv2.COLOR_BGR2RGB)
         match_result = match_faces(
@@ -286,7 +283,7 @@ async def capture_selfie(file: UploadFile = File(...)):
             review_threshold=SELFIE_GATE_REVIEW_DISTANCE,
             step="selfie_gate"
         )
-
+        
         if not match_result.get("ok") or match_result.get("decision") != "ACCEPTED":
             # Security failure: selfie doesn't match ID at gate threshold
             failure_info = register_security_failure(
@@ -300,13 +297,13 @@ async def capture_selfie(file: UploadFile = File(...)):
                     "step": "selfie_gate"
                 }
             )
-
+            
             log_audit_event(
                 session_id,
                 "SECURITY_FAIL",
                 f"Selfie face does not match ID face at security gate (distance: {match_result.get('distance', 0):.3f}, accept_threshold: {SELFIE_GATE_ACCEPT_DISTANCE}, decision: {match_result.get('decision')})"
             )
-
+            
             return {
                 "ok": False,
                 "error": "Your face does not match the ID document. Please try again.",
@@ -314,7 +311,7 @@ async def capture_selfie(file: UploadFile = File(...)):
                 "remaining_attempts": failure_info.get("remaining_attempts", 0),
                 "session_locked": failure_info.get("session_locked", False),
             }
-
+    
     except Exception as e:
         print(f"[SELFIE] Error during face comparison: {e}")
         log_audit_event(session_id, "VALIDATION_FAILED", f"Face comparison error: {str(e)}")
@@ -323,7 +320,7 @@ async def capture_selfie(file: UploadFile = File(...)):
             "ok": False,
             "error": "Technical issue during verification. Please try again."
         }
-
+    
     filename = f"{uuid.uuid4()}.jpg"
     selfie_abs_path = SELFIES_DIR / filename
     selfie_rel_path = f"data/uploads/selfies/{filename}"
@@ -354,7 +351,7 @@ async def face_match():
 
     session_id = current_session_id
     session = sessions[session_id]
-
+    
     print(f"[FACE MATCH] session={session_id}")
 
     # Security: Check if session is locked
@@ -394,112 +391,45 @@ async def face_match():
     selfie_rgb = cv2.cvtColor(selfie_img, cv2.COLOR_BGR2RGB)
     id_rgb = cv2.cvtColor(id_face_img, cv2.COLOR_BGR2RGB)
 
-    # Final face-match check using strict thresholds
-    result = match_faces(
-        selfie_rgb,
-        id_rgb,
-        accept_threshold=FINAL_FACE_MATCH_ACCEPT_DISTANCE,
-        review_threshold=FINAL_FACE_MATCH_REVIEW_DISTANCE,
-        step="final"
-    )
-
+    result = match_faces(selfie_rgb, id_rgb)
     if not result.get("ok"):
-        # Technical error during encoding - treat as processing error, not security failure
-        log_audit_event(
+        # Security failure: face match failed
+        failure_info = register_security_failure(
             session_id,
-            "VALIDATION_FAILED",
-            f"Face encoding error: {result.get('error', 'Face match encoding failed')}"
+            "FACE_MATCH_FAILED",
+            {
+                "distance": result.get("distance", 0),
+                "threshold": FACE_MATCH_THRESHOLD,
+                "decision": result.get("decision")
+            }
         )
-
+        
+        update_session_record(session_id, status="FACE_MATCH_FAILED")
+        log_audit_event(session_id, "VALIDATION_FAILED", result.get("error", "Face match failed"))
+        
         return {
             "session_id": session_id,
             "ok": False,
             "error": result.get("error", "Face match failed"),
+            "security_fail_count": failure_info.get("security_fail_count", 0),
+            "remaining_attempts": failure_info.get("remaining_attempts", 0),
+            "session_locked": failure_info.get("session_locked", False),
         }
 
-    # Check face-match decision
-    if result.get("decision") == "ACCEPTED":
-        # Success path - face match accepted
-        update_session_record(
-            session_id,
-            status="FACE_MATCH_COMPLETED",
-            final_face_match_distance=result.get("distance"),
-            final_face_match_decision="ACCEPTED",
-            face_match_distance=result.get("distance"),
-            face_match_decision="ACCEPTED",
-            final_decision="APPROVED",
-        )
-        log_audit_event(
-            session_id,
-            "FACE_MATCH_COMPLETED",
-            f"Final face-match ACCEPTED (distance: {result.get('distance', 0):.3f}, threshold: {FINAL_FACE_MATCH_ACCEPT_DISTANCE})"
-        )
-        log_audit_event(session_id, "FINAL_RESULT_GENERATED", "Final KYC result generated: APPROVED")
+    update_session_record(
+        session_id,
+        status="FACE_MATCH_COMPLETED",
+        face_match_distance=result.get("distance"),
+        face_match_decision=result.get("decision"),
+        final_decision=result.get("decision"),
+    )
+    log_audit_event(session_id, "FACE_MATCH_COMPLETED", "Face match completed")
+    log_audit_event(session_id, "FINAL_RESULT_GENERATED", "Final KYC result generated")
 
-        return {
-            "session_id": session_id,
-            "ok": True,
-            "passed": True,
-            **result
-        }
-
-    else:
-        # Final face-match failed or needs manual review
-        # Route to MANUAL_REVIEW instead of auto-rejecting (unless session already locked)
-        review_result = handle_final_face_match_failure(
-            session_id,
-            result.get("distance"),
-            {
-                "accept_threshold": FINAL_FACE_MATCH_ACCEPT_DISTANCE,
-                "review_threshold": FINAL_FACE_MATCH_REVIEW_DISTANCE,
-                "decision": result.get("decision"),
-            }
-        )
-
-        if not review_result.get("ok"):
-            log_audit_event(session_id, "ERROR", f"Error updating session for manual review: {review_result.get('error')}")
-            return {
-                "session_id": session_id,
-                "ok": False,
-                "error": "Error processing face-match result",
-            }
-
-        # Check if session is locked (3 strikes already) or just needs review
-        session_status = review_result.get("session_status")
-
-        if session_status == "REJECTED":
-            # Session already locked from earlier failures - return as rejected
-            log_audit_event(
-                session_id,
-                "FACE_MATCH_FAILED",
-                f"Final face-match failed but session already locked (distance: {result.get('distance', 0):.3f})"
-            )
-
-            return {
-                "session_id": session_id,
-                "ok": False,
-                "error": "This session has been rejected due to security concerns.",
-                "security_fail_count": review_result.get("security_fail_count", 0),
-                "session_locked": True,
-                "reject_reason": review_result.get("reject_reason"),
-            }
-
-        else:
-            # Session status = MANUAL_REVIEW (not a strike)
-            log_audit_event(
-                session_id,
-                "FINAL_RESULT_GENERATED",
-                f"Final face-match requires manual review (distance: {result.get('distance', 0):.3f}, threshold: {FINAL_FACE_MATCH_ACCEPT_DISTANCE})"
-            )
-
-            return {
-                "session_id": session_id,
-                "ok": True,
-                "passed": False,
-                "session_status": "MANUAL_REVIEW",
-                "reason": f"Face-match distance ({result.get('distance', 0):.3f}) does not meet strict threshold. Please contact support for manual review.",
-                **result
-            }
+    return {
+        "session_id": session_id,
+        **result
+    }
 
 @router.post("/kyc/liveness")       # endpoint for liveness detection
 async def liveness(file: UploadFile = File(...)):
@@ -509,7 +439,7 @@ async def liveness(file: UploadFile = File(...)):
 
     session_id = current_session_id
     session = sessions[session_id]
-
+    
     print(f"[LIVENESS VIDEO] session={session_id}")
 
     # Security: Check if session is locked
@@ -541,7 +471,7 @@ async def liveness(file: UploadFile = File(...)):
     # Load stored selfie for identity binding
     selfie_abs = BACKEND_DIR / session["selfie_path"]
     selfie_img = cv2.imread(str(selfie_abs))
-
+    
     if selfie_img is None:
         log_audit_event(session_id, "VALIDATION_FAILED", "Could not load stored selfie for liveness identity binding")
         return {
@@ -575,7 +505,7 @@ async def liveness(file: UploadFile = File(...)):
         else:
             log_audit_event(session_id, "LIVENESS_VALIDATION_FAILED", result.get("error", "Liveness validation failed"))
             failure_reason = "LIVENESS_VALIDATION_FAILED"
-
+        
         # Register security failure
         failure_info = register_security_failure(
             session_id,
@@ -587,14 +517,14 @@ async def liveness(file: UploadFile = File(...)):
                 "identity_match_distance": result.get("identity_match_distance", 0),
             }
         )
-
+        
         sessions[session_id]["liveness"] = False
         update_session_record(
             session_id,
             status="LIVENESS_FAILED",
             liveness_passed=False,
         )
-
+        
         return {
             "ok": False,
             "error": result.get("error", "Liveness check failed"),
@@ -612,7 +542,7 @@ async def liveness(file: UploadFile = File(...)):
         status="LIVENESS_COMPLETED",
         liveness_passed=True,
     )
-
+    
     # Log both successful checks
     log_audit_event(
         session_id,

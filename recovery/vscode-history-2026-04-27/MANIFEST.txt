@@ -1,0 +1,840 @@
+backend/api/app.py
+  snapshot_time: 2026-04-25 17:37:20
+  source: Chat Edit: 'I want to implement the next feature in my eKYC bachelor thesis project: a simple protected Admin/Audit section that lets me inspect persisted PostgreSQL verification sessions from the mobile app.
+
+Project context:
+- Backend: FastAPI
+- Frontend: React Native with Expo Router
+- Database: PostgreSQL is already integrated
+- Current user flow already works:
+  Start -> Document -> Review -> Selfie -> Liveness -> Result
+- PostgreSQL persistence already stores:
+  - KYC sessions
+  - OCR fields
+  - liveness results
+  - face match results
+  - final decisions
+  - audit logs
+- Current backend should not be redesigned
+- No full authentication/login/JWT is required
+- This is a thesis MVP, so keep the implementation practical and clean
+
+Goal:
+Create a simple admin/audit feature that uses the existing PostgreSQL data and gives me a visual way to inspect sessions, logs, and technical verification details.
+
+Backend requirements:
+1. Add read-only admin endpoints:
+   - GET /admin/sessions
+   - GET /admin/sessions/{session_id}
+   - GET /admin/sessions/{session_id}/logs
+
+2. Protect these endpoints with a simple admin key header:
+   - Header name: X-Admin-Key
+   - Value should come from an environment variable ADMIN_KEY
+   - Provide a safe default for local development, for example "dev-admin-key"
+   - If the key is missing or wrong, return 403
+
+3. Do not add login/JWT/user roles.
+
+4. GET /admin/sessions should return a list of recent sessions with:
+   - session_id
+   - created_at
+   - updated_at
+   - first_name
+   - last_name
+   - cnp
+   - series_number
+   - liveness_passed
+   - face_match_distance
+   - face_match_decision
+   - final_decision
+   - status
+
+5. GET /admin/sessions/{session_id} should return full session details:
+   - identity/OCR fields
+   - document_path
+   - id_face_path
+   - selfie_path
+   - liveness_video_path
+   - liveness_passed
+   - face_match_distance
+   - face_match_decision
+   - final_decision
+   - raw OCR text if available
+   - created_at
+   - updated_at
+
+6. GET /admin/sessions/{session_id}/logs should return audit timeline:
+   - event_type
+   - message
+   - created_at
+
+7. Technical details:
+   If embeddings table already exists, expose lightweight embedding metadata, not the full raw vector by default:
+   - embedding_type
+   - vector_length
+   - created_at
+   - optional small preview of first 5 values only if easy and safe
+   Do not dump huge vectors directly in the main UI.
+
+Frontend requirements:
+1. Add a simple admin entry screen/route:
+   - /admin
+
+2. The /admin screen should first ask for an admin key/PIN.
+   - User enters the admin key
+   - Store it only in local component state for now
+   - Use it in the X-Admin-Key header when calling admin endpoints
+   - If the key is wrong, show a friendly error
+
+3. After successful access, show a sessions list:
+   - compact cards
+   - name
+   - short session id
+   - status badge
+   - updated_at
+   - face match decision if available
+
+4. Add a session detail route:
+   - /admin/session/[id]
+
+5. The detail screen should show sections:
+   A. Identity data
+      - first_name
+      - last_name
+      - cnp
+      - series_number
+      - sex/nationality/address if available
+
+   B. Verification results
+      - liveness_passed
+      - face_match_distance
+      - face_match_decision
+      - final_decision
+
+   C. Stored media paths
+      - document_path
+      - id_face_path
+      - selfie_path
+      - liveness_video_path
+
+   D. Audit log timeline
+      - list events chronologically
+
+   E. Technical details
+      - OCR raw text preview if available
+      - embedding metadata if available
+      - model/library labels if already known or easy to display:
+        EasyOCR, MediaPipe, face_recognition
+
+6. UI style:
+   - simple, clean, dark style consistent with current app
+   - status badges:
+     VERIFIED green
+     REJECTED red
+     MANUAL_REVIEW yellow/orange
+     IN_PROGRESS gray/blue
+   - no bottom tabs
+   - do not disturb the existing user flow
+
+7. Important constraints:
+   - Do not modify the existing user verification flow
+   - Do not add full auth/login/JWT
+   - Do not expose full embeddings by default
+   - Do not redesign the backend architecture
+   - Reuse existing DB models/services where possible
+   - Keep the feature understandable for a bachelor thesis MVP
+
+8. At the end, summarize:
+   - files created/modified
+   - new backend endpoints
+   - new frontend routes
+   - how admin key protection works
+   - limitations
+
+9. Also provide a manual test plan:
+   - how to set ADMIN_KEY
+   - how to test wrong key returns 403
+   - how to test correct key loads sessions
+   - how to open one session detail
+   - how to verify audit logs are shown'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-716f1b8e/wc1r.py
+
+backend/api/routes_admin.py
+  snapshot_time: 2026-04-27 17:39:32
+  source: Chat Edit: 'Task: Implement “Security Gate + 3-strikes session lock” in my e-KYC MVP.
+
+Context (you already know the project): FastAPI backend + PostgreSQL persistence (SQLAlchemy), React Native (Expo Router) client. Current flow works: Start -> Document -> Review -> Selfie -> Liveness -> Result. DB already stores: kyc_sessions, OCR fields, liveness results, face match results, final decisions, audit logs. No full auth/JWT. Keep architecture as-is (no redesign).
+
+Goal
+1) Add a security stage at the Selfie step:
+   - Compare the selfie face to the ID document face from the same session.
+   - If NOT the same person (below threshold / mismatch), return an error, increment a security-fail counter, write an audit log entry, and DO NOT allow the flow to proceed to liveness/finalize until a successful match happens.
+   - If match succeeds, store the match score/result and allow proceeding.
+
+2) Add a global “3 failed security checks” rule:
+   - For every security-related failure anywhere in the flow (selfie mismatch, liveness failed, no face detected, multiple faces detected, etc.), increment a per-session counter.
+   - When counter reaches 3, immediately “lock” the session:
+     - Set session status = REJECTED (or FRAUD) and store a reject_reason like TOO_MANY_FAILED_SECURITY_CHECKS or FRAUD_SUSPECTED.
+     - Write an audit log entry for the lock event.
+     - Block any further verification endpoints for that session (return 409 Conflict or 403 Forbidden with a clear message). The client should be able to show “session rejected / fraud”.
+
+Hard constraints
+- Do NOT redesign the backend structure.
+- Keep code clean: avoid duplication by creating a single policy/helper used by all endpoints.
+- All new behavior must be persisted to Postgres and visible in admin/audit endpoints (read-only).
+- Only count “security failures” as strikes. Do NOT count infrastructure errors (timeouts, DB failures, network errors) as strikes.
+
+Implementation details you must handle
+A) Database / models
+- Extend the KYC session model with:
+  - security_fail_count (int, default 0)
+  - status (enum/string: PENDING/IN_PROGRESS/APPROVED/REJECTED)
+  - reject_reason (nullable string/enum)
+  - locked_at (nullable datetime) optional
+- Add migration (Alembic) or equivalent schema update.
+
+B) Central policy helper
+Create a reusable function, e.g.:
+  register_security_failure(session_id, reason, details=None) -> updated session
+Responsibilities:
+- Load session FOR UPDATE (avoid race conditions if multiple requests)
+- If already REJECTED, short-circuit
+- Increment security_fail_count
+- Insert audit log row with event_type="SECURITY_FAIL", reason, details, timestamp
+- If security_fail_count >= 3:
+  - status = REJECTED
+  - reject_reason = TOO_MANY_FAILED_SECURITY_CHECKS (or FRAUD_SUSPECTED)
+  - locked_at = now()
+  - Insert audit log row event_type="SESSION_LOCKED"
+- Commit
+
+Also create:
+  ensure_session_not_locked(session_id) -> raises HTTPException if REJECTED (with reason + fail_count)
+
+C) Selfie Gate endpoint integration
+At the selfie verification endpoint (or wherever selfie is processed now):
+- Ensure session not locked
+- Extract face embedding from selfie
+- Use the stored ID embedding (preferred) or ID-face crop to compute embedding if not stored yet
+- Compare embeddings (distance) and decide match based on a threshold (define constant, e.g. FACE_MATCH_THRESHOLD = 0.6 or whatever we use now)
+- On mismatch, call register_security_failure(session_id, "FACE_MISMATCH_SELFIE_ID", {"distance": d, "threshold": t})
+  - Return HTTP 400 (or 422) with message + remaining_attempts = max(0, 3 - fail_count)
+- On success:
+  - Persist face_match_result, score/distance, passed=true
+  - Write audit log event_type="FACE_MATCH_PASSED"
+  - Return success
+
+D) Liveness + other checks integration
+Where liveness is validated:
+- On liveness failure call register_security_failure(session_id, "LIVENESS_FAILED", {...})
+- Same for no-face / multiple-face / spoof indicators that you already detect.
+- Do NOT increment strikes for technical errors.
+
+E) Blocking rule across endpoints
+Add ensure_session_not_locked(session_id) at the start of all verification endpoints:
+- document upload/ocr, selfie, liveness, finalize, etc. (whatever exists)
+If rejected:
+- return 409/403 with JSON including status, reject_reason, security_fail_count
+
+F) API response shape
+Standardize errors so the mobile app can show them:
+- code: "SESSION_LOCKED" or "SECURITY_CHECK_FAILED"
+- message: human-readable
+- security_fail_count
+- remaining_attempts
+- reject_reason (when locked)
+
+G) Admin/Audit visibility
+Update existing read-only admin endpoints so the session list/detail includes:
+- status, reject_reason, security_fail_count, locked_at
+- audit log includes new event types
+
+Deliverables
+- Updated SQLAlchemy models + migration
+- New policy helper module (single source of truth)
+- Updated endpoints (selfie/face-match gating + liveness + global lock check)
+- Tests (at least minimal):
+  1) 3 security failures locks session
+  2) locked session blocks further endpoints
+  3) successful selfie match does NOT increment strikes and allows proceeding
+  4) infra error does NOT increment strikes
+
+Please implement with clear, minimal changes, and show me the exact files to edit + full code patches.'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-7630c99f/7ZuD.py
+
+backend/api/routes_kyc.py
+  snapshot_time: 2026-04-27 17:38:52
+  source: Chat Edit: 'Task: Implement “Security Gate + 3-strikes session lock” in my e-KYC MVP.
+
+Context (you already know the project): FastAPI backend + PostgreSQL persistence (SQLAlchemy), React Native (Expo Router) client. Current flow works: Start -> Document -> Review -> Selfie -> Liveness -> Result. DB already stores: kyc_sessions, OCR fields, liveness results, face match results, final decisions, audit logs. No full auth/JWT. Keep architecture as-is (no redesign).
+
+Goal
+1) Add a security stage at the Selfie step:
+   - Compare the selfie face to the ID document face from the same session.
+   - If NOT the same person (below threshold / mismatch), return an error, increment a security-fail counter, write an audit log entry, and DO NOT allow the flow to proceed to liveness/finalize until a successful match happens.
+   - If match succeeds, store the match score/result and allow proceeding.
+
+2) Add a global “3 failed security checks” rule:
+   - For every security-related failure anywhere in the flow (selfie mismatch, liveness failed, no face detected, multiple faces detected, etc.), increment a per-session counter.
+   - When counter reaches 3, immediately “lock” the session:
+     - Set session status = REJECTED (or FRAUD) and store a reject_reason like TOO_MANY_FAILED_SECURITY_CHECKS or FRAUD_SUSPECTED.
+     - Write an audit log entry for the lock event.
+     - Block any further verification endpoints for that session (return 409 Conflict or 403 Forbidden with a clear message). The client should be able to show “session rejected / fraud”.
+
+Hard constraints
+- Do NOT redesign the backend structure.
+- Keep code clean: avoid duplication by creating a single policy/helper used by all endpoints.
+- All new behavior must be persisted to Postgres and visible in admin/audit endpoints (read-only).
+- Only count “security failures” as strikes. Do NOT count infrastructure errors (timeouts, DB failures, network errors) as strikes.
+
+Implementation details you must handle
+A) Database / models
+- Extend the KYC session model with:
+  - security_fail_count (int, default 0)
+  - status (enum/string: PENDING/IN_PROGRESS/APPROVED/REJECTED)
+  - reject_reason (nullable string/enum)
+  - locked_at (nullable datetime) optional
+- Add migration (Alembic) or equivalent schema update.
+
+B) Central policy helper
+Create a reusable function, e.g.:
+  register_security_failure(session_id, reason, details=None) -> updated session
+Responsibilities:
+- Load session FOR UPDATE (avoid race conditions if multiple requests)
+- If already REJECTED, short-circuit
+- Increment security_fail_count
+- Insert audit log row with event_type="SECURITY_FAIL", reason, details, timestamp
+- If security_fail_count >= 3:
+  - status = REJECTED
+  - reject_reason = TOO_MANY_FAILED_SECURITY_CHECKS (or FRAUD_SUSPECTED)
+  - locked_at = now()
+  - Insert audit log row event_type="SESSION_LOCKED"
+- Commit
+
+Also create:
+  ensure_session_not_locked(session_id) -> raises HTTPException if REJECTED (with reason + fail_count)
+
+C) Selfie Gate endpoint integration
+At the selfie verification endpoint (or wherever selfie is processed now):
+- Ensure session not locked
+- Extract face embedding from selfie
+- Use the stored ID embedding (preferred) or ID-face crop to compute embedding if not stored yet
+- Compare embeddings (distance) and decide match based on a threshold (define constant, e.g. FACE_MATCH_THRESHOLD = 0.6 or whatever we use now)
+- On mismatch, call register_security_failure(session_id, "FACE_MISMATCH_SELFIE_ID", {"distance": d, "threshold": t})
+  - Return HTTP 400 (or 422) with message + remaining_attempts = max(0, 3 - fail_count)
+- On success:
+  - Persist face_match_result, score/distance, passed=true
+  - Write audit log event_type="FACE_MATCH_PASSED"
+  - Return success
+
+D) Liveness + other checks integration
+Where liveness is validated:
+- On liveness failure call register_security_failure(session_id, "LIVENESS_FAILED", {...})
+- Same for no-face / multiple-face / spoof indicators that you already detect.
+- Do NOT increment strikes for technical errors.
+
+E) Blocking rule across endpoints
+Add ensure_session_not_locked(session_id) at the start of all verification endpoints:
+- document upload/ocr, selfie, liveness, finalize, etc. (whatever exists)
+If rejected:
+- return 409/403 with JSON including status, reject_reason, security_fail_count
+
+F) API response shape
+Standardize errors so the mobile app can show them:
+- code: "SESSION_LOCKED" or "SECURITY_CHECK_FAILED"
+- message: human-readable
+- security_fail_count
+- remaining_attempts
+- reject_reason (when locked)
+
+G) Admin/Audit visibility
+Update existing read-only admin endpoints so the session list/detail includes:
+- status, reject_reason, security_fail_count, locked_at
+- audit log includes new event types
+
+Deliverables
+- Updated SQLAlchemy models + migration
+- New policy helper module (single source of truth)
+- Updated endpoints (selfie/face-match gating + liveness + global lock check)
+- Tests (at least minimal):
+  1) 3 security failures locks session
+  2) locked session blocks further endpoints
+  3) successful selfie match does NOT increment strikes and allows proceeding
+  4) infra error does NOT increment strikes
+
+Please implement with clear, minimal changes, and show me the exact files to edit + full code patches.'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-2e1fa685/9piE.py
+
+backend/models/database_models.py
+  snapshot_time: 2026-04-27 17:35:16
+  source: Chat Edit: 'Task: Implement “Security Gate + 3-strikes session lock” in my e-KYC MVP.
+
+Context (you already know the project): FastAPI backend + PostgreSQL persistence (SQLAlchemy), React Native (Expo Router) client. Current flow works: Start -> Document -> Review -> Selfie -> Liveness -> Result. DB already stores: kyc_sessions, OCR fields, liveness results, face match results, final decisions, audit logs. No full auth/JWT. Keep architecture as-is (no redesign).
+
+Goal
+1) Add a security stage at the Selfie step:
+   - Compare the selfie face to the ID document face from the same session.
+   - If NOT the same person (below threshold / mismatch), return an error, increment a security-fail counter, write an audit log entry, and DO NOT allow the flow to proceed to liveness/finalize until a successful match happens.
+   - If match succeeds, store the match score/result and allow proceeding.
+
+2) Add a global “3 failed security checks” rule:
+   - For every security-related failure anywhere in the flow (selfie mismatch, liveness failed, no face detected, multiple faces detected, etc.), increment a per-session counter.
+   - When counter reaches 3, immediately “lock” the session:
+     - Set session status = REJECTED (or FRAUD) and store a reject_reason like TOO_MANY_FAILED_SECURITY_CHECKS or FRAUD_SUSPECTED.
+     - Write an audit log entry for the lock event.
+     - Block any further verification endpoints for that session (return 409 Conflict or 403 Forbidden with a clear message). The client should be able to show “session rejected / fraud”.
+
+Hard constraints
+- Do NOT redesign the backend structure.
+- Keep code clean: avoid duplication by creating a single policy/helper used by all endpoints.
+- All new behavior must be persisted to Postgres and visible in admin/audit endpoints (read-only).
+- Only count “security failures” as strikes. Do NOT count infrastructure errors (timeouts, DB failures, network errors) as strikes.
+
+Implementation details you must handle
+A) Database / models
+- Extend the KYC session model with:
+  - security_fail_count (int, default 0)
+  - status (enum/string: PENDING/IN_PROGRESS/APPROVED/REJECTED)
+  - reject_reason (nullable string/enum)
+  - locked_at (nullable datetime) optional
+- Add migration (Alembic) or equivalent schema update.
+
+B) Central policy helper
+Create a reusable function, e.g.:
+  register_security_failure(session_id, reason, details=None) -> updated session
+Responsibilities:
+- Load session FOR UPDATE (avoid race conditions if multiple requests)
+- If already REJECTED, short-circuit
+- Increment security_fail_count
+- Insert audit log row with event_type="SECURITY_FAIL", reason, details, timestamp
+- If security_fail_count >= 3:
+  - status = REJECTED
+  - reject_reason = TOO_MANY_FAILED_SECURITY_CHECKS (or FRAUD_SUSPECTED)
+  - locked_at = now()
+  - Insert audit log row event_type="SESSION_LOCKED"
+- Commit
+
+Also create:
+  ensure_session_not_locked(session_id) -> raises HTTPException if REJECTED (with reason + fail_count)
+
+C) Selfie Gate endpoint integration
+At the selfie verification endpoint (or wherever selfie is processed now):
+- Ensure session not locked
+- Extract face embedding from selfie
+- Use the stored ID embedding (preferred) or ID-face crop to compute embedding if not stored yet
+- Compare embeddings (distance) and decide match based on a threshold (define constant, e.g. FACE_MATCH_THRESHOLD = 0.6 or whatever we use now)
+- On mismatch, call register_security_failure(session_id, "FACE_MISMATCH_SELFIE_ID", {"distance": d, "threshold": t})
+  - Return HTTP 400 (or 422) with message + remaining_attempts = max(0, 3 - fail_count)
+- On success:
+  - Persist face_match_result, score/distance, passed=true
+  - Write audit log event_type="FACE_MATCH_PASSED"
+  - Return success
+
+D) Liveness + other checks integration
+Where liveness is validated:
+- On liveness failure call register_security_failure(session_id, "LIVENESS_FAILED", {...})
+- Same for no-face / multiple-face / spoof indicators that you already detect.
+- Do NOT increment strikes for technical errors.
+
+E) Blocking rule across endpoints
+Add ensure_session_not_locked(session_id) at the start of all verification endpoints:
+- document upload/ocr, selfie, liveness, finalize, etc. (whatever exists)
+If rejected:
+- return 409/403 with JSON including status, reject_reason, security_fail_count
+
+F) API response shape
+Standardize errors so the mobile app can show them:
+- code: "SESSION_LOCKED" or "SECURITY_CHECK_FAILED"
+- message: human-readable
+- security_fail_count
+- remaining_attempts
+- reject_reason (when locked)
+
+G) Admin/Audit visibility
+Update existing read-only admin endpoints so the session list/detail includes:
+- status, reject_reason, security_fail_count, locked_at
+- audit log includes new event types
+
+Deliverables
+- Updated SQLAlchemy models + migration
+- New policy helper module (single source of truth)
+- Updated endpoints (selfie/face-match gating + liveness + global lock check)
+- Tests (at least minimal):
+  1) 3 security failures locks session
+  2) locked session blocks further endpoints
+  3) successful selfie match does NOT increment strikes and allows proceeding
+  4) infra error does NOT increment strikes
+
+Please implement with clear, minimal changes, and show me the exact files to edit + full code patches.'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-5d259eb9/uXm1.py
+
+backend/services/db_service.py
+  snapshot_time: 2026-04-27 17:39:19
+  source: Chat Edit: 'Task: Implement “Security Gate + 3-strikes session lock” in my e-KYC MVP.
+
+Context (you already know the project): FastAPI backend + PostgreSQL persistence (SQLAlchemy), React Native (Expo Router) client. Current flow works: Start -> Document -> Review -> Selfie -> Liveness -> Result. DB already stores: kyc_sessions, OCR fields, liveness results, face match results, final decisions, audit logs. No full auth/JWT. Keep architecture as-is (no redesign).
+
+Goal
+1) Add a security stage at the Selfie step:
+   - Compare the selfie face to the ID document face from the same session.
+   - If NOT the same person (below threshold / mismatch), return an error, increment a security-fail counter, write an audit log entry, and DO NOT allow the flow to proceed to liveness/finalize until a successful match happens.
+   - If match succeeds, store the match score/result and allow proceeding.
+
+2) Add a global “3 failed security checks” rule:
+   - For every security-related failure anywhere in the flow (selfie mismatch, liveness failed, no face detected, multiple faces detected, etc.), increment a per-session counter.
+   - When counter reaches 3, immediately “lock” the session:
+     - Set session status = REJECTED (or FRAUD) and store a reject_reason like TOO_MANY_FAILED_SECURITY_CHECKS or FRAUD_SUSPECTED.
+     - Write an audit log entry for the lock event.
+     - Block any further verification endpoints for that session (return 409 Conflict or 403 Forbidden with a clear message). The client should be able to show “session rejected / fraud”.
+
+Hard constraints
+- Do NOT redesign the backend structure.
+- Keep code clean: avoid duplication by creating a single policy/helper used by all endpoints.
+- All new behavior must be persisted to Postgres and visible in admin/audit endpoints (read-only).
+- Only count “security failures” as strikes. Do NOT count infrastructure errors (timeouts, DB failures, network errors) as strikes.
+
+Implementation details you must handle
+A) Database / models
+- Extend the KYC session model with:
+  - security_fail_count (int, default 0)
+  - status (enum/string: PENDING/IN_PROGRESS/APPROVED/REJECTED)
+  - reject_reason (nullable string/enum)
+  - locked_at (nullable datetime) optional
+- Add migration (Alembic) or equivalent schema update.
+
+B) Central policy helper
+Create a reusable function, e.g.:
+  register_security_failure(session_id, reason, details=None) -> updated session
+Responsibilities:
+- Load session FOR UPDATE (avoid race conditions if multiple requests)
+- If already REJECTED, short-circuit
+- Increment security_fail_count
+- Insert audit log row with event_type="SECURITY_FAIL", reason, details, timestamp
+- If security_fail_count >= 3:
+  - status = REJECTED
+  - reject_reason = TOO_MANY_FAILED_SECURITY_CHECKS (or FRAUD_SUSPECTED)
+  - locked_at = now()
+  - Insert audit log row event_type="SESSION_LOCKED"
+- Commit
+
+Also create:
+  ensure_session_not_locked(session_id) -> raises HTTPException if REJECTED (with reason + fail_count)
+
+C) Selfie Gate endpoint integration
+At the selfie verification endpoint (or wherever selfie is processed now):
+- Ensure session not locked
+- Extract face embedding from selfie
+- Use the stored ID embedding (preferred) or ID-face crop to compute embedding if not stored yet
+- Compare embeddings (distance) and decide match based on a threshold (define constant, e.g. FACE_MATCH_THRESHOLD = 0.6 or whatever we use now)
+- On mismatch, call register_security_failure(session_id, "FACE_MISMATCH_SELFIE_ID", {"distance": d, "threshold": t})
+  - Return HTTP 400 (or 422) with message + remaining_attempts = max(0, 3 - fail_count)
+- On success:
+  - Persist face_match_result, score/distance, passed=true
+  - Write audit log event_type="FACE_MATCH_PASSED"
+  - Return success
+
+D) Liveness + other checks integration
+Where liveness is validated:
+- On liveness failure call register_security_failure(session_id, "LIVENESS_FAILED", {...})
+- Same for no-face / multiple-face / spoof indicators that you already detect.
+- Do NOT increment strikes for technical errors.
+
+E) Blocking rule across endpoints
+Add ensure_session_not_locked(session_id) at the start of all verification endpoints:
+- document upload/ocr, selfie, liveness, finalize, etc. (whatever exists)
+If rejected:
+- return 409/403 with JSON including status, reject_reason, security_fail_count
+
+F) API response shape
+Standardize errors so the mobile app can show them:
+- code: "SESSION_LOCKED" or "SECURITY_CHECK_FAILED"
+- message: human-readable
+- security_fail_count
+- remaining_attempts
+- reject_reason (when locked)
+
+G) Admin/Audit visibility
+Update existing read-only admin endpoints so the session list/detail includes:
+- status, reject_reason, security_fail_count, locked_at
+- audit log includes new event types
+
+Deliverables
+- Updated SQLAlchemy models + migration
+- New policy helper module (single source of truth)
+- Updated endpoints (selfie/face-match gating + liveness + global lock check)
+- Tests (at least minimal):
+  1) 3 security failures locks session
+  2) locked session blocks further endpoints
+  3) successful selfie match does NOT increment strikes and allows proceeding
+  4) infra error does NOT increment strikes
+
+Please implement with clear, minimal changes, and show me the exact files to edit + full code patches.'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-52b6b247/Wgmz.py
+
+backend/services/liveness.py
+  snapshot_time: 2026-04-25 18:33:51
+  source: Chat Edit: 'I want to harden the security of the current eKYC flow.
+
+Context:
+- Backend: FastAPI
+- Frontend: React Native Expo
+- Database: PostgreSQL
+- Current flow:
+  Start -> Document -> Review -> Selfie -> Liveness -> Result
+- The backend already has endpoints:
+  POST /kyc/document
+  POST /kyc/selfie
+  POST /kyc/liveness
+  POST /kyc/face-match
+- The app currently stores session data and audit logs in PostgreSQL.
+- Do not redesign the architecture.
+- Do not add login/JWT.
+- Keep changes focused and practical for a bachelor thesis MVP.
+
+Security requirements:
+
+1. Selfie validation
+Update POST /kyc/selfie so that:
+- if no face is detected, return ok:false with a user-friendly error
+- if more than one face is detected, return ok:false with:
+  "Multiple faces detected. Please take the selfie alone."
+- only allow the selfie step to pass when exactly one face is detected
+- store/log the number of detected faces if useful
+- add audit log event SELFIE_VALIDATION_FAILED when validation fails
+
+2. Liveness identity binding
+Update POST /kyc/liveness so that liveness is not only blink detection.
+After liveness video is uploaded and analyzed:
+- extract one or more good frames from the liveness video
+- detect faces in those frames
+- if no face is detected in the liveness frames, fail liveness
+- if multiple faces are detected in any selected frame, fail liveness
+- compare the face from the liveness frame(s) with the already stored selfie for the same current session
+- if the liveness face does not match the stored selfie, return ok:false with a user-friendly error:
+  "The person in the liveness video does not match the selfie."
+- only mark liveness as passed if:
+  a) blink/liveness challenge passed
+  b) exactly one face is present
+  c) liveness face matches the stored selfie
+
+3. Session order enforcement
+Make sure:
+- selfie cannot be uploaded before a valid document/id_face exists
+- liveness cannot run before a selfie exists
+- face-match cannot run before liveness passed
+
+4. Logging and database persistence
+- Update PostgreSQL session record with relevant validation results
+- Add audit logs for:
+  SELFIE_VALIDATION_FAILED
+  LIVENESS_VALIDATION_FAILED
+  LIVENESS_IDENTITY_MATCH_PASSED
+  LIVENESS_IDENTITY_MATCH_FAILED
+
+5. Frontend behavior
+- Display backend error messages clearly in the UI
+- Do not allow navigation to the next step when backend returns ok:false
+- Keep messages non-technical and user-friendly
+
+6. Constraints
+- Do not add authentication
+- Do not redesign existing endpoints
+- Do not break the current flow
+- Keep the implementation clean and minimal
+- Reuse existing face matching utilities where possible
+
+At the end:
+- summarize changed files
+- explain the new security rules
+- provide a manual test plan:
+  a) selfie with no face
+  b) selfie with one face
+  c) selfie with two faces
+  d) liveness with same person
+  e) liveness with different person
+  f) trying to skip steps'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-2c4acc76/sjmq.py
+
+backend/services/security_policy.py
+  snapshot_time: 2026-04-27 18:33:08
+  source: (none)
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-1cfcd7b0/njMk.py
+
+visionauth-mobile/app/admin.tsx
+  snapshot_time: 2026-04-25 17:38:37
+  source: Chat Edit: 'I want to implement the next feature in my eKYC bachelor thesis project: a simple protected Admin/Audit section that lets me inspect persisted PostgreSQL verification sessions from the mobile app.
+
+Project context:
+- Backend: FastAPI
+- Frontend: React Native with Expo Router
+- Database: PostgreSQL is already integrated
+- Current user flow already works:
+  Start -> Document -> Review -> Selfie -> Liveness -> Result
+- PostgreSQL persistence already stores:
+  - KYC sessions
+  - OCR fields
+  - liveness results
+  - face match results
+  - final decisions
+  - audit logs
+- Current backend should not be redesigned
+- No full authentication/login/JWT is required
+- This is a thesis MVP, so keep the implementation practical and clean
+
+Goal:
+Create a simple admin/audit feature that uses the existing PostgreSQL data and gives me a visual way to inspect sessions, logs, and technical verification details.
+
+Backend requirements:
+1. Add read-only admin endpoints:
+   - GET /admin/sessions
+   - GET /admin/sessions/{session_id}
+   - GET /admin/sessions/{session_id}/logs
+
+2. Protect these endpoints with a simple admin key header:
+   - Header name: X-Admin-Key
+   - Value should come from an environment variable ADMIN_KEY
+   - Provide a safe default for local development, for example "dev-admin-key"
+   - If the key is missing or wrong, return 403
+
+3. Do not add login/JWT/user roles.
+
+4. GET /admin/sessions should return a list of recent sessions with:
+   - session_id
+   - created_at
+   - updated_at
+   - first_name
+   - last_name
+   - cnp
+   - series_number
+   - liveness_passed
+   - face_match_distance
+   - face_match_decision
+   - final_decision
+   - status
+
+5. GET /admin/sessions/{session_id} should return full session details:
+   - identity/OCR fields
+   - document_path
+   - id_face_path
+   - selfie_path
+   - liveness_video_path
+   - liveness_passed
+   - face_match_distance
+   - face_match_decision
+   - final_decision
+   - raw OCR text if available
+   - created_at
+   - updated_at
+
+6. GET /admin/sessions/{session_id}/logs should return audit timeline:
+   - event_type
+   - message
+   - created_at
+
+7. Technical details:
+   If embeddings table already exists, expose lightweight embedding metadata, not the full raw vector by default:
+   - embedding_type
+   - vector_length
+   - created_at
+   - optional small preview of first 5 values only if easy and safe
+   Do not dump huge vectors directly in the main UI.
+
+Frontend requirements:
+1. Add a simple admin entry screen/route:
+   - /admin
+
+2. The /admin screen should first ask for an admin key/PIN.
+   - User enters the admin key
+   - Store it only in local component state for now
+   - Use it in the X-Admin-Key header when calling admin endpoints
+   - If the key is wrong, show a friendly error
+
+3. After successful access, show a sessions list:
+   - compact cards
+   - name
+   - short session id
+   - status badge
+   - updated_at
+   - face match decision if available
+
+4. Add a session detail route:
+   - /admin/session/[id]
+
+5. The detail screen should show sections:
+   A. Identity data
+      - first_name
+      - last_name
+      - cnp
+      - series_number
+      - sex/nationality/address if available
+
+   B. Verification results
+      - liveness_passed
+      - face_match_distance
+      - face_match_decision
+      - final_decision
+
+   C. Stored media paths
+      - document_path
+      - id_face_path
+      - selfie_path
+      - liveness_video_path
+
+   D. Audit log timeline
+      - list events chronologically
+
+   E. Technical details
+      - OCR raw text preview if available
+      - embedding metadata if available
+      - model/library labels if already known or easy to display:
+        EasyOCR, MediaPipe, face_recognition
+
+6. UI style:
+   - simple, clean, dark style consistent with current app
+   - status badges:
+     VERIFIED green
+     REJECTED red
+     MANUAL_REVIEW yellow/orange
+     IN_PROGRESS gray/blue
+   - no bottom tabs
+   - do not disturb the existing user flow
+
+7. Important constraints:
+   - Do not modify the existing user verification flow
+   - Do not add full auth/login/JWT
+   - Do not expose full embeddings by default
+   - Do not redesign the backend architecture
+   - Reuse existing DB models/services where possible
+   - Keep the feature understandable for a bachelor thesis MVP
+
+8. At the end, summarize:
+   - files created/modified
+   - new backend endpoints
+   - new frontend routes
+   - how admin key protection works
+   - limitations
+
+9. Also provide a manual test plan:
+   - how to set ADMIN_KEY
+   - how to test wrong key returns 403
+   - how to test correct key loads sessions
+   - how to open one session detail
+   - how to verify audit logs are shown'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-5fc99e50/adpL.tsx
+
+visionauth-mobile/app/admin/session/[id].tsx
+  snapshot_time: 2026-04-27 17:31:09
+  source: Chat Edit: 'i want to change the accepted status in admin panel to green'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/6d78a515/cooO.tsx
+
+visionauth-mobile/app/admin/sessions.tsx
+  snapshot_time: 2026-04-27 17:31:09
+  source: Chat Edit: 'i want to change the accepted status in admin panel to green'
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/-182dd26e/rmON.tsx
+
+visionauth-mobile/constants/api.ts
+  snapshot_time: 2026-04-27 17:17:14
+  source: (none)
+  vscode_history_file: /Users/giumi/Library/Application Support/Code/User/History/5b3787af/Ya0T.ts
+

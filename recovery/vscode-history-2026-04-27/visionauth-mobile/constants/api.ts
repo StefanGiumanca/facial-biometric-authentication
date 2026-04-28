@@ -31,17 +31,10 @@ export type AdminSession = {
   cnp: string | null;
   series_number: string | null;
   liveness_passed: boolean | null;
-  selfie_gate_distance: number | null;
-  selfie_gate_decision: string | null;
-  final_face_match_distance: number | null;
-  final_face_match_decision: string | null;
   face_match_distance: number | null;
   face_match_decision: string | null;
   final_decision: string | null;
   status: string;
-  security_fail_count: number;
-  reject_reason: string | null;
-  locked_at: string | null;
 };
 
 export type EmbeddingMetadata = {
@@ -66,17 +59,10 @@ export type SessionDetail = {
   selfie_path: string | null;
   liveness_video_path: string | null;
   liveness_passed: boolean | null;
-  selfie_gate_distance: number | null;
-  selfie_gate_decision: string | null;
-  final_face_match_distance: number | null;
-  final_face_match_decision: string | null;
   face_match_distance: number | null;
   face_match_decision: string | null;
   final_decision: string | null;
   raw_ocr_text: string | null;
-  security_fail_count: number;
-  reject_reason: string | null;
-  locked_at: string | null;
   embeddings: EmbeddingMetadata[];
 };
 

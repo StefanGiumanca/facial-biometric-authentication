@@ -5,14 +5,14 @@ import numpy as np
 def match_faces(selfie_img, id_img, accept_threshold=0.50, review_threshold=0.60, step="final"):
     """
     Compare two face images and return match decision.
-
+    
     Args:
         selfie_img: Selfie image (BGR from OpenCV)
         id_img: ID face image (BGR from OpenCV)
         accept_threshold: Distance threshold for ACCEPTED decision (default: 0.50 for final check)
         review_threshold: Distance threshold for MANUAL_REVIEW decision
         step: "selfie_gate" or "final" - for logging/audit purposes
-
+    
     Returns:
         dict with:
         - ok: bool (True if encoding succeeded)

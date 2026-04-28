@@ -110,34 +110,34 @@ def extract_frames_from_video(video_path, max_frames=200):
 def extract_faces_from_frames(frames, sample_every_n=10):
     """
     Extract faces from video frames at regular intervals.
-
+    
     Args:
         frames: list of BGR frames from video
         sample_every_n: sample every Nth frame to reduce processing
-
+    
     Returns:
         dict with extracted faces, frame indices, and validation results
     """
     extracted_faces = []
     sampled_frame_indices = []
-
+    
     # Sample frames at regular intervals
     for i in range(0, len(frames), sample_every_n):
         frame = frames[i]
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
+        
         # Detect faces in this frame
         face_locations = face_recognition.face_locations(rgb_frame)
-
+        
         if face_locations:
             # Extract face encoding and crop
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-
+            
             if len(face_locations) == 1 and len(face_encodings) == 1:
                 # Exactly one face in this frame - this is good
                 top, right, bottom, left = face_locations[0]
                 face_crop = frame[top:bottom, left:right]
-
+                
                 extracted_faces.append({
                     "frame_index": i,
                     "face_crop": face_crop,
@@ -154,13 +154,13 @@ def extract_faces_from_frames(frames, sample_every_n=10):
                     "frame_index": i,
                     "num_faces": len(face_locations),
                 }
-
+    
     if not extracted_faces:
         return {
             "ok": False,
             "error": "no_faces_extracted",
         }
-
+    
     return {
         "ok": True,
         "extracted_faces": extracted_faces,
@@ -183,12 +183,12 @@ def analyze_liveness_with_identity_binding(video_path, selfie_img_bgr, face_matc
     1. Blink detection from video
     2. Face detection in video frames
     3. Identity verification (liveness face matches selfie)
-
+    
     Args:
         video_path: path to liveness video file
         selfie_img_bgr: BGR image of stored selfie
         face_match_threshold: distance threshold for face matching (lower = stricter)
-
+    
     Returns:
         dict with comprehensive liveness validation results
     """
@@ -202,14 +202,14 @@ def analyze_liveness_with_identity_binding(video_path, selfie_img_bgr, face_matc
             "face_detected": False,
             "identity_match_passed": None,
         }
-
+    
     # Step 1: Analyze blinks
     blink_result = analyze_blink_sequence(frames)
     blink_passed = blink_result.get("passed", False)
-
+    
     # Step 2: Extract faces from video frames
     face_extraction = extract_faces_from_frames(frames, sample_every_n=10)
-
+    
     if not face_extraction.get("ok"):
         error = face_extraction.get("error", "unknown")
         if error == "multiple_faces_in_frame":
@@ -229,13 +229,13 @@ def analyze_liveness_with_identity_binding(video_path, selfie_img_bgr, face_matc
                 "face_detected": False,
                 "identity_match_passed": False,
             }
-
+    
     extracted_faces = face_extraction.get("extracted_faces", [])
-
+    
     # Step 3: Compare each extracted liveness face with selfie
     selfie_rgb = cv2.cvtColor(selfie_img_bgr, cv2.COLOR_BGR2RGB)
     selfie_encodings = face_recognition.face_encodings(selfie_rgb)
-
+    
     if not selfie_encodings:
         return {
             "ok": False,
@@ -244,23 +244,23 @@ def analyze_liveness_with_identity_binding(video_path, selfie_img_bgr, face_matc
             "face_detected": True,
             "identity_match_passed": False,
         }
-
+    
     selfie_encoding = selfie_encodings[0]
-
+    
     # Check if any liveness face matches the selfie
     best_distance = float('inf')
     best_match_index = -1
-
+    
     for idx, face_data in enumerate(extracted_faces):
         liveness_encoding = face_data["face_encoding"]
         distance = float(np.linalg.norm(selfie_encoding - liveness_encoding))
-
+        
         if distance < best_distance:
             best_distance = distance
             best_match_index = idx
-
+    
     identity_match_passed = best_distance < face_match_threshold
-
+    
     return {
         "ok": blink_passed and identity_match_passed,
         "blink_passed": blink_passed,
