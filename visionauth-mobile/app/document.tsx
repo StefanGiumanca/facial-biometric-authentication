@@ -117,7 +117,7 @@ export default function DocumentScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 1 of 4</Text>
+        <Text style={styles.step}>Step 1 of 5</Text>
         <Text style={styles.title}>Scan your ID</Text>
         <Text style={styles.subtitle}>
           Capture the front of the Romanian ID card clearly so OCR and face extraction can run.
@@ -163,8 +163,15 @@ export default function DocumentScreen() {
                 </Text>
               );
             })}
-            <Pressable style={styles.button} onPress={() => router.push('/selfie')}>
-              <Text style={styles.buttonText}>Continue to selfie</Text>
+            <Pressable
+              style={styles.button}
+              onPress={() =>
+                router.push({
+                  pathname: '/review',
+                  params: { documentResult: JSON.stringify(documentResult) },
+                })
+              }>
+              <Text style={styles.buttonText}>Continue to review</Text>
             </Pressable>
           </View>
         )}

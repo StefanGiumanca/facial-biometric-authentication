@@ -54,7 +54,7 @@ export default function SelfieScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 2 of 4</Text>
+        <Text style={styles.step}>Step 3 of 5</Text>
         <Text style={styles.title}>Take a selfie</Text>
         <Text style={styles.subtitle}>
           Keep your face centered and well lit. The backend checks that a face is present before the

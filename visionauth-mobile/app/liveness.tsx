@@ -67,7 +67,7 @@ export default function LivenessScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 3 of 4</Text>
+        <Text style={styles.step}>Step 4 of 5</Text>
         <Text style={styles.title}>Blink liveness</Text>
         <Text style={styles.subtitle}>
           Record a short video with your face visible and blink at least three times.

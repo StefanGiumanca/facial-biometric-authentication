@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from difflib import SequenceMatcher
 
 def is_valid_cnp(cnp: str) -> bool:
@@ -75,6 +76,106 @@ def extract_series_from_text(text: str):
 
     return None
 
+
+def strip_diacritics(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def normalize_ocr_text(text: str) -> str:
+    text = strip_diacritics(text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def extract_sex_from_text(text: str, cnp: str | None = None) -> str | None:
+    normalized = normalize_ocr_text(text).upper()
+
+    match = re.search(r"\bSEX(?:E)?\b\s*[:\-]?\s*([MF])\b", normalized)
+    if match:
+        return match.group(1)
+
+    if cnp:
+        return "M" if cnp[0] in {"1", "3", "5", "7"} else "F" if cnp[0] in {"2", "4", "6", "8"} else None
+
+    return None
+
+
+def extract_nationality_from_text(text: str) -> str | None:
+    normalized = normalize_ocr_text(text)
+    upper = normalized.upper()
+    label_match = re.search(r"\b(CETATENIE|NATIONALITE|NATIONALITY)\b", upper)
+
+    if label_match:
+        window = normalized[label_match.end():label_match.end() + 50]
+        if re.search(r"\bROU\b", window, flags=re.IGNORECASE):
+            return "ROU"
+        romanian_match = re.search(r"\bROMAN[A]?\b", strip_diacritics(window), flags=re.IGNORECASE)
+        if romanian_match:
+            return romanian_match.group(0).capitalize()
+
+    if re.search(r"\bROU\b", upper):
+        return "ROU"
+    if re.search(r"\bROMAN[A]?\b", upper):
+        return "Romana"
+
+    return None
+
+
+ADDRESS_STOP_WORDS = (
+    "EMISA",
+    "EMIS",
+    "DELIVREE",
+    "ISSUED",
+    "VALABILITATE",
+    "VALABIL",
+    "VALIDITE",
+    "VALIDITY",
+    "VALID",
+    "SPCLEP",
+    "CETATENIE",
+    "NATIONALITE",
+    "NATIONALITY",
+    r"SEX(?:E)?",
+)
+
+
+def extract_validity_dates_from_text(text: str) -> tuple[str | None, str | None]:
+    normalized = normalize_ocr_text(text)
+    date = r"\d{2}[./]\d{2}[./]\d{2,4}"
+    range_match = re.search(rf"({date})\s*[-–]\s*({date})", normalized)
+    if range_match:
+        return range_match.group(1), range_match.group(2)
+
+    label_match = re.search(rf"\b(VALABILITATE|VALABIL|VALID|VALIDITY)\b[^0-9]*({date})", normalized, flags=re.IGNORECASE)
+    if label_match:
+        return label_match.group(2), None
+
+    return None, None
+
+
+def extract_address_from_text(text: str) -> str | None:
+    normalized = normalize_ocr_text(text)
+    upper = normalized.upper()
+    label_match = re.search(r"\b(DOMICILIU|ADRESSE|ADDRESS|DOMICILE)\b", upper)
+    if not label_match:
+        return None
+
+    after_label = normalized[label_match.end():]
+    stop_match = re.search(
+        rf"\b({'|'.join(ADDRESS_STOP_WORDS)})\b",
+        after_label,
+        flags=re.IGNORECASE,
+    )
+    address = after_label[:stop_match.start()] if stop_match else after_label
+    address = re.sub(r"^(?:\s*/?\s*(ADRESSE|ADDRESS|DOMICILE|DOMICILIU)\s*/?\s*)+", "", address, flags=re.IGNORECASE)
+    address = re.sub(r"\b(JUD|JUD\.|SECT|SECTOR)\b", lambda match: match.group(0).upper(), address, flags=re.IGNORECASE)
+    address = re.sub(r"\b(nr\.?\s*\d+[A-Z]?)\s+\d{2,4}\s+[A-Z]{1,3}\s+[A-Z]{1,3}\b", r"\1", address, flags=re.IGNORECASE)
+    address = re.sub(r"\s+", " ", address)
+    address = address.strip(" :;-.,")
+
+    return address or None
+
 def normalize_name(s : str | None) -> str:
     if not s:
         return ""
@@ -120,12 +221,21 @@ def parse_romanian_id(full_text: str, series_text: str | None = None) -> dict:
     cnp = valid_cnps[0] if len(valid_cnps) == 1 else None
 
     series_number = extract_series_from_text(series_text) if series_text else None
+    sex = extract_sex_from_text(full_text, cnp)
+    nationality = extract_nationality_from_text(full_text)
+    address = extract_address_from_text(full_text)
+    valid_from, valid_until = extract_validity_dates_from_text(full_text)
 
     return {
         "last_name": last_name,
         "first_name": first_name,
         "cnp": cnp,
         "series_number": series_number,
+        "sex": sex,
+        "nationality": nationality,
+        "address": address,
+        "valid_from": valid_from,
+        "valid_until": valid_until,
     }
 
 
