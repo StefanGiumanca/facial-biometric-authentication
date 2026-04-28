@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,18 @@ import { getKyc, postKyc } from '@/constants/api';
 type SessionStatus = {
   ok?: boolean;
   session_id?: string;
+  first_name?: string;
+  last_name?: string;
+  session_data?: {
+    reviewed_document_fields?: {
+      first_name?: string | null;
+      last_name?: string | null;
+    } | null;
+    document_fields?: {
+      first_name?: string | null;
+      last_name?: string | null;
+    } | null;
+  };
   document_uploaded?: boolean;
   id_face_extracted?: boolean;
   selfie_uploaded?: boolean;
@@ -30,6 +42,7 @@ type FaceMatchResult = {
 };
 
 export default function ResultScreen() {
+  const params = useLocalSearchParams<{ first_name?: string; last_name?: string; name?: string }>();
   const hasLoaded = useRef(false);
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [matchResult, setMatchResult] = useState<FaceMatchResult | null>(null);
@@ -68,72 +81,43 @@ export default function ResultScreen() {
     }
   };
 
-  const decision = matchResult?.session_status || matchResult?.decision;
-  const isAccepted = decision === 'ACCEPTED' || matchResult?.final_decision === 'APPROVED';
-  const needsReview = decision === 'MANUAL_REVIEW';
-  const isRejected = decision === 'REJECTED';
+  const decision = getBackendDecision(matchResult);
+  const ticket = getTicketState({ decision, error, isLoading, matchResult, status });
+  const fullName = getDisplayName(status, params);
+  const faceDistance = getFaceDistance(matchResult);
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.step}>Step 5 of 5</Text>
-        <Text style={styles.title}>Verification check</Text>
+        <Text style={styles.title}>Verification pass</Text>
+        <Text style={styles.subtitle}>Generated from the current eKYC session.</Text>
 
-        {isLoading && <Text style={styles.subtitle}>Checking session status and face match result...</Text>}
-
-        {!isLoading && error && (
-          <View style={styles.resultPanel}>
-            <Text style={styles.resultTitle}>Result unavailable</Text>
-            <Text style={styles.resultText}>{error}</Text>
+        <View style={[styles.ticketCard, { borderColor: ticket.color }]}>
+          <View style={styles.ticketHeader}>
+            <Text style={styles.brand}>VisionAuth</Text>
+            <Text style={styles.ticketType}>Digital ticket</Text>
           </View>
-        )}
 
-        {!isLoading && !error && status && !status.ready_for_face_match && (
-          <View style={styles.resultPanel}>
-            <Text style={styles.resultTitle}>Verification incomplete</Text>
-            <Text style={styles.resultText}>
-              Complete document upload, selfie upload, and liveness before face matching.
-            </Text>
-            <StatusRow label="Document uploaded" value={status.document_uploaded} />
-            <StatusRow label="ID face extracted" value={status.id_face_extracted} />
-            <StatusRow label="Selfie uploaded" value={status.selfie_uploaded} />
-            <StatusRow label="Liveness passed" value={status.liveness_passed} />
+          <View style={[styles.badge, { backgroundColor: ticket.badgeBackground, borderColor: ticket.color }]}>
+            <Text style={[styles.badgeText, { color: ticket.color }]}>{ticket.badge}</Text>
           </View>
-        )}
 
-        {!isLoading && !error && matchResult && (
-          <View
-            style={[
-              styles.resultPanel,
-              isAccepted && styles.acceptedPanel,
-              needsReview && styles.reviewPanel,
-              isRejected && styles.rejectedPanel,
-            ]}>
-            <Text style={styles.resultTitle}>{decisionLabel(decision)}</Text>
-            {matchResult.reason && <Text style={styles.resultText}>{matchResult.reason}</Text>}
-            <StatusRow label="Final check passed" value={matchResult.passed === true || isAccepted} />
-            <DetailRow label="Decision" value={String(decision ?? 'n/a')} />
-            <Text style={styles.resultText}>
-              Face distance: {typeof matchResult.distance === 'number' ? matchResult.distance.toFixed(4) : 'n/a'}
-            </Text>
-            <Text style={styles.resultText}>
-              Accept threshold: {String(matchResult.accept_threshold ?? 'n/a')}
-            </Text>
-            <Text style={styles.resultText}>
-              Review threshold: {String(matchResult.review_threshold ?? 'n/a')}
-            </Text>
-            <Text style={styles.resultHint}>
-              The selfie gate uses a more permissive threshold earlier in the flow. This final check is stricter and can send the session to manual review.
-            </Text>
-          </View>
-        )}
+          <Text style={styles.ticketTitle}>{ticket.title}</Text>
+          <Text style={styles.ticketDescription}>{ticket.description}</Text>
+
+          <View style={styles.divider} />
+
+          <DetailRow label="Name" value={fullName} />
+          <DetailRow label="Session ID" value={String(status?.session_id ?? 'Unavailable')} />
+          <DetailRow label="Timestamp" value={new Date().toLocaleString()} />
+          <DetailRow label="Backend decision" value={decision ?? ticket.badge} />
+          <DetailRow label="Face match distance" value={faceDistance} />
+        </View>
 
         <View style={styles.actions}>
-          <Pressable style={styles.secondaryButton} onPress={loadResult}>
-            <Text style={styles.secondaryButtonText}>Refresh status</Text>
-          </Pressable>
           <Pressable style={styles.button} onPress={() => router.replace('/')}>
-            <Text style={styles.buttonText}>Start new session</Text>
+            <Text style={styles.buttonText}>Start new verification</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -141,44 +125,119 @@ export default function ResultScreen() {
   );
 }
 
-function StatusRow({ label, value }: { label: string; value?: boolean }) {
-  return (
-    <View style={styles.statusRow}>
-      <Text style={styles.statusLabel}>{label}</Text>
-      <Text style={[styles.statusValue, value ? styles.statusPassed : styles.statusMissing]}>
-        {value ? 'Yes' : 'No'}
-      </Text>
-    </View>
-  );
-}
-
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.statusRow}>
-      <Text style={styles.statusLabel}>{label}</Text>
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
     </View>
   );
 }
 
-function decisionLabel(decision?: string) {
-  if (decision === 'ACCEPTED') {
-    return 'Identity verified';
+function getBackendDecision(matchResult: FaceMatchResult | null) {
+  return String(matchResult?.session_status || matchResult?.decision || matchResult?.final_decision || '').toUpperCase() || null;
+}
+
+function getTicketState({
+  decision,
+  error,
+  isLoading,
+  matchResult,
+  status,
+}: {
+  decision: string | null;
+  error: string | null;
+  isLoading: boolean;
+  matchResult: FaceMatchResult | null;
+  status: SessionStatus | null;
+}) {
+  if (isLoading) {
+    return {
+      badge: 'UNAVAILABLE',
+      title: 'Result unavailable',
+      description: 'Error processing face-match result.',
+      color: '#EF4444',
+      badgeBackground: '#3F1218',
+    };
   }
 
-  if (decision === 'APPROVED') {
-    return 'Identity verified';
+  if (error || !status?.ready_for_face_match || !matchResult) {
+    return {
+      badge: 'UNAVAILABLE',
+      title: 'Result unavailable',
+      description: 'Error processing face-match result.',
+      color: '#EF4444',
+      badgeBackground: '#3F1218',
+    };
   }
 
-  if (decision === 'MANUAL_REVIEW') {
-    return 'Manual review needed';
+  if (decision === 'ACCEPTED' || decision === 'VERIFIED' || decision === 'APPROVED') {
+    return {
+      badge: 'VERIFIED',
+      title: 'Identity verified',
+      description: 'The identity verification passed successfully.',
+      color: '#22C55E',
+      badgeBackground: '#123820',
+    };
   }
 
   if (decision === 'REJECTED') {
-    return 'Identity rejected';
+    return {
+      badge: 'REJECTED',
+      title: 'Identity rejected',
+      description: 'The selfie did not meet the backend face-match threshold for this session.',
+      color: '#EF4444',
+      badgeBackground: '#3F1218',
+    };
   }
 
-  return 'Face match complete';
+  if (decision === 'MANUAL_REVIEW') {
+    return {
+      badge: 'MANUAL REVIEW',
+      title: 'Manual review required',
+      description: 'The result requires manual review because the confidence is borderline.',
+      color: '#F59E0B',
+      badgeBackground: '#3A2708',
+    };
+  }
+
+  return {
+    badge: 'UNAVAILABLE',
+    title: 'Result unavailable',
+    description: 'Error processing face-match result.',
+    color: '#EF4444',
+    badgeBackground: '#3F1218',
+  };
+}
+
+function getDisplayName(
+  status: SessionStatus | null,
+  params: { first_name?: string; last_name?: string; name?: string }
+) {
+  const paramName = getParamValue(params.name);
+  if (paramName) {
+    return paramName;
+  }
+
+  const reviewedFields = status?.session_data?.reviewed_document_fields;
+  const documentFields = status?.session_data?.document_fields;
+  const firstName = String(
+    reviewedFields?.first_name || documentFields?.first_name || status?.first_name || getParamValue(params.first_name) || ''
+  ).trim();
+  const lastName = String(
+    reviewedFields?.last_name || documentFields?.last_name || status?.last_name || getParamValue(params.last_name) || ''
+  ).trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  return fullName || 'Unavailable';
+}
+
+function getParamValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getFaceDistance(matchResult: FaceMatchResult | null) {
+  const distance = matchResult?.distance ?? matchResult?.face_match_distance ?? matchResult?.final_face_match_distance;
+  return typeof distance === 'number' ? distance.toFixed(4) : 'Unavailable';
 }
 
 const styles = StyleSheet.create({
@@ -188,7 +247,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
-    justifyContent: 'center',
     padding: 24,
   },
   step: {
@@ -209,82 +267,83 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginBottom: 24,
   },
-  resultPanel: {
+  ticketCard: {
     backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 10,
-    marginTop: 12,
-    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    padding: 20,
   },
-  acceptedPanel: {
-    borderColor: '#16A34A',
+  ticketHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
   },
-  reviewPanel: {
-    borderColor: '#F59E0B',
-  },
-  rejectedPanel: {
-    borderColor: '#DC2626',
-  },
-  resultTitle: {
+  brand: {
     color: 'white',
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
-  resultText: {
+  ticketType: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  badgeText: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  ticketTitle: {
+    color: 'white',
+    fontSize: 30,
+    fontWeight: '900',
+    marginBottom: 10,
+  },
+  ticketDescription: {
     color: '#CBD5E1',
     fontSize: 15,
     lineHeight: 22,
   },
-  resultHint: {
+  divider: {
+    backgroundColor: '#334155',
+    height: 1,
+    marginVertical: 18,
+  },
+  detailRow: {
+    gap: 6,
+    marginBottom: 13,
+  },
+  detailLabel: {
     color: '#94A3B8',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  statusRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statusLabel: {
-    color: '#CBD5E1',
-    fontSize: 15,
-  },
-  statusValue: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '800',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
   },
   detailValue: {
     color: '#E2E8F0',
     fontSize: 15,
-    fontWeight: '800',
-  },
-  statusPassed: {
-    color: '#86EFAC',
-  },
-  statusMissing: {
-    color: '#FCA5A5',
+    fontWeight: '700',
   },
   actions: {
-    gap: 12,
     marginTop: 24,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
-    paddingVertical: 14,
-  },
-  secondaryButtonText: {
-    color: '#E5E7EB',
-    fontSize: 15,
-    fontWeight: '700',
   },
   button: {
     alignItems: 'center',
     backgroundColor: '#2563EB',
-    borderRadius: 8,
+    borderRadius: 12,
     paddingVertical: 16,
   },
   buttonText: {
