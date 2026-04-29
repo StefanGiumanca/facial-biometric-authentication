@@ -42,7 +42,13 @@ type FaceMatchResult = {
 };
 
 export default function ResultScreen() {
-  const params = useLocalSearchParams<{ first_name?: string; last_name?: string; name?: string }>();
+  const params = useLocalSearchParams<{
+    first_name?: string;
+    last_name?: string;
+    name?: string;
+    decision?: string;
+    reason?: string;
+  }>();
   const hasLoaded = useRef(false);
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [matchResult, setMatchResult] = useState<FaceMatchResult | null>(null);
@@ -81,7 +87,7 @@ export default function ResultScreen() {
     }
   };
 
-  const decision = getBackendDecision(matchResult);
+  const decision = getBackendDecision(matchResult, getParamValue(params.decision));
   const ticket = getTicketState({ decision, error, isLoading, matchResult, status });
   const fullName = getDisplayName(status, params);
   const faceDistance = getFaceDistance(matchResult);
@@ -134,8 +140,8 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getBackendDecision(matchResult: FaceMatchResult | null) {
-  return String(matchResult?.session_status || matchResult?.decision || matchResult?.final_decision || '').toUpperCase() || null;
+function getBackendDecision(matchResult: FaceMatchResult | null, fallbackDecision?: string) {
+  return String(matchResult?.session_status || matchResult?.decision || matchResult?.final_decision || fallbackDecision || '').toUpperCase() || null;
 }
 
 function getTicketState({
@@ -151,17 +157,7 @@ function getTicketState({
   matchResult: FaceMatchResult | null;
   status: SessionStatus | null;
 }) {
-  if (isLoading) {
-    return {
-      badge: 'UNAVAILABLE',
-      title: 'Result unavailable',
-      description: 'Error processing face-match result.',
-      color: '#EF4444',
-      badgeBackground: '#3F1218',
-    };
-  }
-
-  if (error || !status?.ready_for_face_match || !matchResult) {
+  if (isLoading && !decision) {
     return {
       badge: 'UNAVAILABLE',
       title: 'Result unavailable',
@@ -198,6 +194,16 @@ function getTicketState({
       description: 'The result requires manual review because the confidence is borderline.',
       color: '#F59E0B',
       badgeBackground: '#3A2708',
+    };
+  }
+
+  if (error || !status?.ready_for_face_match || !matchResult) {
+    return {
+      badge: 'UNAVAILABLE',
+      title: 'Result unavailable',
+      description: 'Error processing face-match result.',
+      color: '#EF4444',
+      badgeBackground: '#3F1218',
     };
   }
 

@@ -108,7 +108,7 @@ export default function DocumentScreen() {
       setDocumentResult(data);
     } catch (error) {
       console.log('Document upload error:', error);
-      Alert.alert('Document check failed', error instanceof Error ? error.message : 'Could not upload ID card.');
+      Alert.alert('Document check failed', getDocumentUploadErrorMessage(error));
     } finally {
       setIsUploading(false);
     }
@@ -178,6 +178,16 @@ export default function DocumentScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function getDocumentUploadErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+
+  if (message.includes('JSON Parse error') || message.includes('No face detected on ID')) {
+    return 'We could not detect a valid Romanian ID card in this photo. Please scan the front of your ID clearly and try again.';
+  }
+
+  return message || 'Could not upload ID card. Please try again with a clear Romanian ID photo.';
 }
 
 const styles = StyleSheet.create({

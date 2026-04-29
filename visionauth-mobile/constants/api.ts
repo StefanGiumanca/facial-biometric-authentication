@@ -1,7 +1,7 @@
 export const WIFI_API_BASE_URL = 'http://192.168.1.131:8000';
 export const NGROK_API_BASE_URL = 'https://reward-botanist-tag.ngrok-free.dev';
 
-export const API_BASE_URL = NGROK_API_BASE_URL;
+export const API_BASE_URL = WIFI_API_BASE_URL; 
 
 export type UploadAsset = {
   uri: string;
@@ -12,7 +12,12 @@ export type UploadAsset = {
 export type ApiResponse = {
   ok?: boolean;
   error?: string;
-  detail?: string;
+  detail?: string | {
+    code?: string;
+    reason?: string;
+    message?: string;
+    security_fail_count?: number;
+  };
   [key: string]: unknown;
 };
 
@@ -110,7 +115,8 @@ async function readJsonResponse(response: Response): Promise<ApiResponse> {
   const data = (await response.json()) as ApiResponse;
 
   if (!response.ok || data.ok === false) {
-    const error = new Error(data.error || data.detail || `Request failed with status ${response.status}`) as ApiError;
+    const detailMessage = typeof data.detail === 'object' ? data.detail?.message : data.detail;
+    const error = new Error(data.error || detailMessage || `Request failed with status ${response.status}`) as ApiError;
     error.data = data;
     throw error;
   }

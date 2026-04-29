@@ -40,6 +40,12 @@ export default function StartScreen() {
         </View>
 
         <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+          onPress={() => router.push('/admin')}>
+          <Text style={styles.secondaryButtonText}>Admin logs</Text>
+        </Pressable>
+
+        <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
           onPress={handleStartVerification}
           disabled={isStarting}>
@@ -92,12 +98,26 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 16,
   },
+  secondaryButton: {
+    alignItems: 'center',
+    backgroundColor: '#1F2937',
+    borderColor: '#334155',
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingVertical: 11,
+  },
   buttonPressed: {
     opacity: 0.82,
   },
   buttonText: {
     color: 'white',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  secondaryButtonText: {
+    color: '#CBD5E1',
+    fontSize: 14,
     fontWeight: '700',
   },
 });

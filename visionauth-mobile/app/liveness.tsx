@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { uploadKycFile, type UploadAsset } from '@/constants/api';
+import { uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
 
 type LivenessResponse = {
   ok?: boolean;
@@ -58,7 +58,27 @@ export default function LivenessScreen() {
       }
     } catch (error) {
       console.log('Liveness upload error:', error);
-      Alert.alert('Liveness check failed', error instanceof Error ? error.message : 'Could not upload liveness video.');
+      const locked = isSessionLockedError(error);
+      const message = getLivenessErrorMessage(error);
+
+      if (locked) {
+        Alert.alert('Session rejected', message, [
+          {
+            text: 'View result',
+            onPress: () =>
+              router.replace({
+                pathname: '/result',
+                params: {
+                  decision: 'REJECTED',
+                  reason: 'TOO_MANY_FAILED_SECURITY_CHECKS',
+                },
+              }),
+          },
+        ]);
+        return;
+      }
+
+      Alert.alert('Liveness check failed', message);
     } finally {
       setIsUploading(false);
     }
@@ -66,6 +86,7 @@ export default function LivenessScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
+      <Stack.Screen options={{ headerShown: false, title: '' }} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.step}>Step 4 of 5</Text>
         <Text style={styles.title}>Blink liveness</Text>
@@ -106,6 +127,36 @@ export default function LivenessScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function isSessionLockedError(error: unknown) {
+  const data = (error as ApiError | undefined)?.data;
+  const detail = typeof data?.detail === 'object' ? data.detail : null;
+
+  return (
+    data?.session_locked === true ||
+    detail?.code === 'SESSION_LOCKED' ||
+    detail?.reason === 'TOO_MANY_FAILED_SECURITY_CHECKS'
+  );
+}
+
+function getLivenessErrorMessage(error: unknown) {
+  const apiError = error as ApiError | undefined;
+  const detail = typeof apiError?.data?.detail === 'object' ? apiError.data.detail : null;
+
+  if (detail?.code === 'SESSION_LOCKED' || detail?.reason === 'TOO_MANY_FAILED_SECURITY_CHECKS') {
+    return detail.message || 'This session has been rejected after too many failed security checks.';
+  }
+
+  if (apiError?.data?.error) {
+    return apiError.data.error;
+  }
+
+  if (typeof apiError?.data?.detail === 'string') {
+    return apiError.data.detail;
+  }
+
+  return error instanceof Error ? error.message : 'Could not upload liveness video.';
 }
 
 const styles = StyleSheet.create({
