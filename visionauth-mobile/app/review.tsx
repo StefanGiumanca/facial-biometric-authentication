@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { postKycJson, type ApiError, type ApiResponse } from '@/constants/api';
+import { getKyc, postKycJson, type ApiError, type ApiResponse } from '@/constants/api';
 
 type DocumentResult = {
   [key: string]: unknown;
@@ -19,6 +19,13 @@ type ValidationFieldFailure = {
 
 type ValidationResponse = ApiResponse & {
   failed_fields?: ValidationFieldFailure[];
+};
+
+type SessionStatus = {
+  session_data?: {
+    document_fields?: DocumentResult | null;
+    reviewed_document_fields?: DocumentResult | null;
+  };
 };
 
 const requiredFieldsMessage = 'Please complete all required fields before continuing.';
@@ -73,7 +80,14 @@ const friendlyValidationMessages: Record<string, string> = {
 
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{ documentResult?: string | string[] }>();
-  const documentResult = useMemo(() => parseDocumentResult(params.documentResult), [params.documentResult]);
+  const [restoredDocumentResult, setRestoredDocumentResult] = useState<DocumentResult | null>(null);
+  const documentResult = useMemo(
+    () => {
+      const parsedResult = parseDocumentResult(params.documentResult);
+      return Object.keys(parsedResult).length > 0 ? parsedResult : restoredDocumentResult ?? {};
+    },
+    [params.documentResult, restoredDocumentResult]
+  );
   const editableFields = useMemo(() => buildEditableFields(documentResult), [documentResult]);
   const initialValues = useMemo(() => buildInitialValues(documentResult, editableFields), [documentResult, editableFields]);
   const [values, setValues] = useState<EditableValues>(initialValues);
@@ -82,10 +96,31 @@ export default function ReviewScreen() {
   const [isValidating, setIsValidating] = useState(false);
 
   useEffect(() => {
+    hydrateReviewProgress();
+  }, []);
+
+  useEffect(() => {
     setValues(initialValues);
     setFieldErrors({});
     setFormError(null);
   }, [initialValues]);
+
+  const hydrateReviewProgress = async () => {
+    if (params.documentResult) {
+      return;
+    }
+
+    try {
+      const status = (await getKyc('/kyc/session/status')) as SessionStatus;
+      const restoredFields = status.session_data?.reviewed_document_fields ?? status.session_data?.document_fields;
+
+      if (restoredFields) {
+        setRestoredDocumentResult(restoredFields);
+      }
+    } catch (error) {
+      console.log('Review progress restore skipped:', error);
+    }
+  };
 
   const updateField = (field: string, value: string) => {
     setFieldErrors((currentErrors) => {

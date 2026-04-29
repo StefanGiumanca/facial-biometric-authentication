@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router, Stack } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
+import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
 
 type LivenessResponse = {
   ok?: boolean;
@@ -15,10 +15,30 @@ type LivenessResponse = {
   [key: string]: unknown;
 };
 
+type SessionStatus = {
+  liveness_passed?: boolean;
+};
+
 export default function LivenessScreen() {
   const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [result, setResult] = useState<LivenessResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    hydrateLivenessProgress();
+  }, []);
+
+  const hydrateLivenessProgress = async () => {
+    try {
+      const status = (await getKyc('/kyc/session/status')) as SessionStatus;
+
+      if (status.liveness_passed) {
+        setResult({ ok: true, passed: true });
+      }
+    } catch (error) {
+      console.log('Liveness progress restore skipped:', error);
+    }
+  };
 
   const recordVideo = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -108,9 +128,11 @@ export default function LivenessScreen() {
 
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={uploadVideo}
+          onPress={result?.passed ? () => router.push('/result') : uploadVideo}
           disabled={isUploading}>
-          <Text style={styles.buttonText}>{isUploading ? 'Analyzing...' : 'Upload liveness video'}</Text>
+          <Text style={styles.buttonText}>
+            {isUploading ? 'Analyzing...' : result?.passed ? 'Continue to result' : 'Upload liveness video'}
+          </Text>
         </Pressable>
 
         {result && !result.passed && (

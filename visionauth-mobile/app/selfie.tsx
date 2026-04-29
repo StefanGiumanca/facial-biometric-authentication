@@ -1,15 +1,35 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
+import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
+
+type SessionStatus = {
+  selfie_uploaded?: boolean;
+};
 
 export default function SelfieScreen() {
   const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [facesDetected, setFacesDetected] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    hydrateSelfieProgress();
+  }, []);
+
+  const hydrateSelfieProgress = async () => {
+    try {
+      const status = (await getKyc('/kyc/session/status')) as SessionStatus;
+
+      if (status.selfie_uploaded) {
+        setFacesDetected(1);
+      }
+    } catch (error) {
+      console.log('Selfie progress restore skipped:', error);
+    }
+  };
 
   const captureSelfie = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();

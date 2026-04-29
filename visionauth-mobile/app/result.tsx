@@ -122,13 +122,21 @@ export default function ResultScreen() {
         </View>
 
         <View style={styles.actions}>
-          <Pressable style={styles.button} onPress={() => router.replace('/')}>
+          <Pressable style={styles.button} onPress={returnToStart}>
             <Text style={styles.buttonText}>Start new verification</Text>
           </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function returnToStart() {
+  if (router.canDismiss()) {
+    router.dismissAll();
+  }
+
+  router.replace('/');
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {

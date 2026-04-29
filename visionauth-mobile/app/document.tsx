@@ -1,10 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { uploadKycFile, type UploadAsset } from '@/constants/api';
+import { getKyc, uploadKycFile, type UploadAsset } from '@/constants/api';
 
 type DocumentResponse = {
   ok?: boolean;
@@ -21,12 +21,43 @@ type PreparedUploadAsset = {
   fileName?: string | null;
 };
 
+type SessionStatus = {
+  id_face_extracted?: boolean;
+  session_data?: {
+    document_fields?: DocumentResponse | null;
+    document_path?: string | null;
+    id_face_path?: string | null;
+  };
+};
+
 const visibleDocumentFields = ['cnp', 'last_name', 'first_name', 'series', 'number', 'address'];
 
 export default function DocumentScreen() {
   const [asset, setAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [documentResult, setDocumentResult] = useState<DocumentResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    hydrateDocumentProgress();
+  }, []);
+
+  const hydrateDocumentProgress = async () => {
+    try {
+      const status = (await getKyc('/kyc/session/status')) as SessionStatus;
+      const documentFields = status.session_data?.document_fields;
+
+      if (status.id_face_extracted && documentFields && !documentResult) {
+        setDocumentResult({
+          ok: true,
+          ...documentFields,
+          document_path: status.session_data?.document_path ?? undefined,
+          id_face_path: status.session_data?.id_face_path ?? undefined,
+        });
+      }
+    } catch (error) {
+      console.log('Document progress restore skipped:', error);
+    }
+  };
 
   const requestPermissions = async () => {
     const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
