@@ -167,11 +167,11 @@ function getTicketState({
 }) {
   if (isLoading && !decision) {
     return {
-      badge: 'UNAVAILABLE',
-      title: 'Result unavailable',
-      description: 'Error processing face-match result.',
-      color: '#EF4444',
-      badgeBackground: '#3F1218',
+      badge: 'CHECKING',
+      title: 'Checking verification...',
+      description: 'Please wait while we process your identity.',
+      color: '#60A5FA',
+      badgeBackground: '#172554',
     };
   }
 
