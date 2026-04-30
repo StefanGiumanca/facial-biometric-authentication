@@ -1,7 +1,7 @@
 export const WIFI_API_BASE_URL = 'http://192.168.1.131:8000';
 export const NGROK_API_BASE_URL = 'https://reward-botanist-tag.ngrok-free.dev';
 
-export const API_BASE_URL = WIFI_API_BASE_URL; 
+export const API_BASE_URL = NGROK_API_BASE_URL;
 
 export type UploadAsset = {
   uri: string;
