@@ -1,6 +1,6 @@
 import os
 
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 import cv2
 import uuid
@@ -27,7 +27,7 @@ from backend.services.security_policy import (
 
 
 router = APIRouter()
-reader = build_reader(gpu=os.getenv("OCR_USE_GPU", "0") == "1")
+reader = build_reader(gpu=os.getenv("OCR_USE_GPU", "1") == "1")
 detector = load_haar_face_detector()
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -307,6 +307,17 @@ async def capture_selfie(file: UploadFile = File(...)):
                 f"Selfie face does not match ID face at security gate (distance: {match_result.get('distance', 0):.3f}, accept_threshold: {SELFIE_GATE_ACCEPT_DISTANCE}, decision: {match_result.get('decision')})"
             )
 
+            if failure_info.get("session_locked"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "SESSION_LOCKED",
+                        "reason": "TOO_MANY_FAILED_SECURITY_CHECKS",
+                        "message": "This session has been rejected after too many failed security checks.",
+                        "security_fail_count": failure_info.get("security_fail_count", 0),
+                    },
+                )
+
             return {
                 "ok": False,
                 "error": "Your face does not match the ID document. Please try again.",
@@ -315,6 +326,8 @@ async def capture_selfie(file: UploadFile = File(...)):
                 "session_locked": failure_info.get("session_locked", False),
             }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[SELFIE] Error during face comparison: {e}")
         log_audit_event(session_id, "VALIDATION_FAILED", f"Face comparison error: {str(e)}")
@@ -594,6 +607,17 @@ async def liveness(file: UploadFile = File(...)):
             status="LIVENESS_FAILED",
             liveness_passed=False,
         )
+
+        if failure_info.get("session_locked"):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "SESSION_LOCKED",
+                    "reason": "TOO_MANY_FAILED_SECURITY_CHECKS",
+                    "message": "This session has been rejected after too many failed security checks.",
+                    "security_fail_count": failure_info.get("security_fail_count", 0),
+                },
+            )
 
         return {
             "ok": False,

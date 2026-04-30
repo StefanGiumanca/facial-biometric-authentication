@@ -33,8 +33,8 @@ MAX_SECURITY_FAILURES = 3
 # More permissive because selfies may differ from ID photos (age, lighting, angle).
 # Used ONLY at the selfie upload step to give user multiple attempts.
 # If a user fails this gate, they're allowed to retry (up to 3 times before lock).
-SELFIE_GATE_ACCEPT_DISTANCE = 0.55      # Accept: distance <= 0.55 (more permissive)
-SELFIE_GATE_REVIEW_DISTANCE = 0.70      # Review: 0.55 < distance <= 0.70 (currently rejected at selfie gate)
+SELFIE_GATE_ACCEPT_DISTANCE = 0.60      # Accept: distance <= 0.60 (more permissive)
+SELFIE_GATE_REVIEW_DISTANCE = 0.70      # Review: 0.60 < distance <= 0.70 (currently rejected at selfie gate)
 
 # FINAL FACE-MATCH CHECK (Face-match endpoint)
 # Stricter because this is the final verification step before approval.

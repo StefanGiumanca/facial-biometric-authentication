@@ -90,6 +90,22 @@ def ocr_full_text(reader, img_bgr) -> str:
     return " ".join(texts)
 
 
+def ocr_series_text(reader, img_bgr, outputs_dir: Path | None = None) -> str:
+    """Fallback OCR for the series/number static ROI."""
+    roi = crop_series_roi(img_bgr)
+
+    if outputs_dir is not None:
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(outputs_dir / "series_roi_static.jpg"), roi)
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    results = reader.readtext(gray)
+    texts = [t for (_, t, conf) in results]
+    return " ".join(texts)
+
+
 def ocr_series_text_dynamic(reader, img_bgr, outputs_dir: Path | None = None) -> str:
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)

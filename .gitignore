@@ -1,5 +1,6 @@
 # Virtual environment
 venv/
+.vscode/
 
 # Python cache
 __pycache__/
@@ -22,3 +23,5 @@ DEV_START.md
 SECURITY_HARDENING_SUMMARY.md
 SECURITY_HARDENING_TEST_PLAN.md
 SECURITY_LOCK_TEST_PLAN.md
+
+recovery/
