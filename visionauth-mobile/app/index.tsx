@@ -42,7 +42,7 @@ export default function StartScreen() {
         <Pressable
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
           onPress={() => router.push('/admin')}>
-          <Text style={styles.secondaryButtonText}>Admin logs</Text>
+          <Text style={styles.secondaryButtonText}>Web admin dashboard</Text>
         </Pressable>
 
         <Pressable

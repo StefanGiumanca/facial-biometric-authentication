@@ -1,91 +1,53 @@
-import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { API_BASE_URL } from '@/constants/api';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function AdminAuthScreen() {
-  const [adminKey, setAdminKey] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+import { LOCAL_WEB_ADMIN_URL, WEB_ADMIN_URL } from '@/constants/api';
 
-  const handleLogin = async () => {
-    if (!adminKey.trim()) {
-      Alert.alert('Error', 'Please enter the admin key');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Test the key by making a minimal request to sessions endpoint
-      const response = await fetch(`${API_BASE_URL}/admin/sessions?limit=1`, {
-        headers: {
-          'X-Admin-Key': adminKey,
-        },
-      });
-
-      if (response.status === 403) {
-        Alert.alert('Error', 'Invalid admin key');
-        setIsLoading(false);
-        return;
-      }
-
-      if (!response.ok) {
-        Alert.alert('Error', 'Failed to authenticate');
-        setIsLoading(false);
-        return;
-      }
-
-      // Key is valid, navigate to sessions list
-      // Pass adminKey via navigation params
-      router.push({
-        pathname: '/admin/sessions',
-        params: { adminKey },
-      });
-    } catch (error) {
-      console.error('Auth error:', error);
-      Alert.alert('Error', 'Could not connect to backend');
-    } finally {
-      setIsLoading(false);
-    }
+export default function AdminDashboardInfoScreen() {
+  const openDashboard = async () => {
+    await Linking.openURL(WEB_ADMIN_URL);
   };
 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.container}>
-        <Text style={styles.title}>Admin Access</Text>
-        <Text style={styles.subtitle}>Enter admin key to view audit logs and sessions</Text>
+        <Text style={styles.eyebrow}>Admin review</Text>
+        <Text style={styles.title}>Use the web dashboard for manual decisions</Text>
+        <Text style={styles.subtitle}>
+          The mobile app is reserved for the applicant KYC flow. Audit inspection, image comparison,
+          and approve/reject decisions are handled from the VisionAuth web admin dashboard.
+        </Text>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Admin Key</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter admin key"
-            placeholderTextColor="#94A3B8"
-            secureTextEntry
-            value={adminKey}
-            onChangeText={setAdminKey}
-            editable={!isLoading}
-          />
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Open it on your PC</Text>
+          <Text style={styles.cardText}>
+            Start the web admin app, then open this address in your desktop browser:
+          </Text>
+          <Text style={styles.urlText}>{LOCAL_WEB_ADMIN_URL}</Text>
+        </View>
 
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, isLoading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={isLoading}>
-            <Text style={styles.buttonText}>{isLoading ? 'Authenticating...' : 'Access Admin'}</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-            onPress={() => router.back()}
-            disabled={isLoading}>
-            <Text style={styles.backButtonText}>Back</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Open it from this phone</Text>
+          <Text style={styles.cardText}>
+            If the phone and PC are on the same Wi-Fi, this opens the dashboard in the phone browser:
+          </Text>
+          <Text style={styles.urlText}>{WEB_ADMIN_URL}</Text>
+          <Pressable style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]} onPress={openDashboard}>
+            <Text style={styles.buttonText}>Open dashboard in browser</Text>
           </Pressable>
         </View>
 
-        <View style={styles.info}>
-          <Text style={styles.infoText}>This section is for admin access only.</Text>
-          <Text style={styles.infoText}>You can inspect KYC sessions and audit logs.</Text>
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>
+            Sessions appear after a KYC flow starts and stores data in PostgreSQL. If the dashboard is
+            empty, complete a verification first or call the session start endpoint for a test record.
+          </Text>
         </View>
+
+        <Pressable style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed]} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>Back</Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -98,85 +60,93 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 20,
-    justifyContent: 'center',
+  },
+  eyebrow: {
+    color: '#60A5FA',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    textTransform: 'uppercase',
   },
   title: {
     color: 'white',
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '800',
-    marginBottom: 8,
+    lineHeight: 37,
+    marginBottom: 14,
   },
   subtitle: {
     color: '#C7D2FE',
     fontSize: 16,
     lineHeight: 24,
-    marginBottom: 32,
+    marginBottom: 22,
   },
-  form: {
-    marginBottom: 40,
-  },
-  label: {
-    color: '#94A3B8',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  input: {
+  card: {
     backgroundColor: '#1E293B',
-    borderWidth: 1,
     borderColor: '#334155',
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 16,
+  },
+  cardTitle: {
     color: 'white',
     fontSize: 16,
-    marginBottom: 20,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  cardText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  urlText: {
+    color: '#93C5FD',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 12,
   },
   button: {
     alignItems: 'center',
     backgroundColor: '#2563EB',
     borderRadius: 8,
-    paddingVertical: 14,
-    marginBottom: 12,
+    paddingVertical: 13,
   },
   buttonPressed: {
     opacity: 0.82,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
   buttonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  notice: {
+    backgroundColor: '#111827',
+    borderLeftColor: '#F59E0B',
+    borderLeftWidth: 4,
+    borderRadius: 8,
+    marginBottom: 12,
+    padding: 14,
+  },
+  noticeText: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    lineHeight: 20,
   },
   backButton: {
     alignItems: 'center',
-    backgroundColor: '#475569',
+    backgroundColor: '#334155',
     borderRadius: 8,
     paddingVertical: 12,
   },
-  backButtonPressed: {
-    opacity: 0.82,
-  },
   backButtonText: {
     color: '#E2E8F0',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  info: {
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#60A5FA',
-  },
-  infoText: {
-    color: '#CBD5E1',
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 4,
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

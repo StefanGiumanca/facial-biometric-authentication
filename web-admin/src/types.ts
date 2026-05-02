@@ -109,3 +109,9 @@ export type AdminDecisionResponse = {
     reject_reason: string | null;
   };
 };
+
+export type AdminDeleteSessionResponse = {
+  ok: boolean;
+  message: string;
+  session_id: string;
+};

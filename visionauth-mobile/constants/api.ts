@@ -3,6 +3,10 @@ export const NGROK_API_BASE_URL = 'https://reward-botanist-tag.ngrok-free.dev';
 
 export const API_BASE_URL = WIFI_API_BASE_URL; // Change this to switch between local and ngrok backend
 
+export const LOCAL_WEB_ADMIN_URL = 'http://127.0.0.1:5173';
+export const WIFI_WEB_ADMIN_URL = 'http://192.168.1.131:5173';
+export const WEB_ADMIN_URL = WIFI_WEB_ADMIN_URL; // Use this on a physical phone connected to the same Wi-Fi as the PC
+
 export type UploadAsset = {
   uri: string;
   fileName?: string | null;
@@ -35,6 +39,11 @@ export type AdminSession = {
   last_name: string | null;
   cnp: string | null;
   series_number: string | null;
+  sex: string | null;
+  nationality: string | null;
+  address: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
   liveness_passed: boolean | null;
   selfie_gate_distance: number | null;
   selfie_gate_decision: string | null;
@@ -66,6 +75,11 @@ export type SessionDetail = {
   last_name: string | null;
   cnp: string | null;
   series_number: string | null;
+  sex: string | null;
+  nationality: string | null;
+  address: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
   document_path: string | null;
   id_face_path: string | null;
   selfie_path: string | null;

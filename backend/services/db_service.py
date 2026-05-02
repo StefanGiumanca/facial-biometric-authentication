@@ -99,6 +99,24 @@ def set_admin_session_decision(session_id: str, decision: str, admin_note: str |
         raise
 
 
+def delete_admin_session(session_id: str) -> bool:
+    """Permanently delete a KYC session and its database-owned related rows."""
+    try:
+        with SessionLocal() as db:
+            session = db.get(KycSession, session_id)
+            if session is None:
+                return False
+
+            db.query(AuditLog).filter(AuditLog.session_id == session_id).delete(synchronize_session=False)
+            db.query(EmbeddingRecord).filter(EmbeddingRecord.session_id == session_id).delete(synchronize_session=False)
+            db.delete(session)
+            db.commit()
+            return True
+    except SQLAlchemyError as error:
+        print(f"[DB] Admin delete session failed: {error}")
+        raise
+
+
 # ========== ADMIN/AUDIT ENDPOINTS ==========
 
 def get_admin_sessions(limit: int = 50, offset: int = 0) -> list[dict]:

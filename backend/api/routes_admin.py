@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from backend.services.db_service import (
+    delete_admin_session,
     get_admin_session_detail,
     get_admin_session_logs,
     get_admin_sessions,
@@ -107,6 +108,28 @@ def admin_set_session_decision(
         "ok": True,
         "message": "Decision saved successfully",
         "session": result,
+    }
+
+
+@router.delete("/sessions/{session_id}")
+def admin_delete_session(
+    session_id: str,
+    x_admin_key: Annotated[str | None, Header()] = None,
+):
+    verify_admin_key(x_admin_key)
+
+    try:
+        deleted = delete_admin_session(session_id)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not delete session")
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "ok": True,
+        "message": "Session deleted permanently",
+        "session_id": session_id,
     }
 
 

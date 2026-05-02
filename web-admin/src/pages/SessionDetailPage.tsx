@@ -11,7 +11,7 @@ import {
   TopNav,
 } from '../components';
 import { useAdminAuth } from '../auth';
-import { API_BASE_URL, buildAdminMediaUrl, getAdminSessionDetail, getAdminSessionLogs, saveAdminDecision } from '../lib/api';
+import { API_BASE_URL, buildAdminMediaUrl, deleteAdminSession, getAdminSessionDetail, getAdminSessionLogs, saveAdminDecision } from '../lib/api';
 import { formatDateTime, formatDecisionWithDistance } from '../lib/utils';
 import type { AdminDecision, AuditLogEntry, SessionDetail } from '../types';
 
@@ -26,6 +26,7 @@ export function SessionDetailPage() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingDecision, setIsSavingDecision] = useState(false);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [adminNote, setAdminNote] = useState('');
   const [error, setError] = useState('');
   const [decisionMessage, setDecisionMessage] = useState('');
@@ -82,6 +83,31 @@ export function SessionDetailPage() {
       setError(err instanceof Error ? err.message : 'Could not save admin decision.');
     } finally {
       setIsSavingDecision(false);
+    }
+  }
+
+  async function handleDeleteSession() {
+    const confirmed = window.confirm(
+      'Permanently delete this KYC session from the database? This will also remove its audit logs and embedding records.',
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const confirmedAgain = window.confirm('This cannot be undone. Delete this session permanently?');
+    if (!confirmedAgain) {
+      return;
+    }
+
+    try {
+      setIsDeletingSession(true);
+      setError('');
+      await deleteAdminSession(adminKey, sessionId);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete session.');
+    } finally {
+      setIsDeletingSession(false);
     }
   }
 
@@ -250,6 +276,19 @@ export function SessionDetailPage() {
                 </div>
                 <p className="note-text">
                   Approved sessions are marked <code>ACCEPTED</code>; rejected sessions are marked <code>REJECTED</code> and the note is retained in the audit log.
+                </p>
+              </SectionCard>
+
+              <SectionCard title="Danger Zone" hint="Remove this session from the admin database.">
+                <button
+                  type="button"
+                  className="button button--danger"
+                  disabled={isDeletingSession}
+                  onClick={handleDeleteSession}>
+                  {isDeletingSession ? 'Deleting...' : 'Delete session permanently'}
+                </button>
+                <p className="note-text">
+                  This removes the session record, audit timeline, and embedding metadata from PostgreSQL.
                 </p>
               </SectionCard>
 

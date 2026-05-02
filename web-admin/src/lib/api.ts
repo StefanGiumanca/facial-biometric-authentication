@@ -1,13 +1,24 @@
 import type {
   AdminDecision,
   AdminDecisionResponse,
+  AdminDeleteSessionResponse,
   AdminSessionDetailResponse,
   AdminSessionLogsResponse,
   AdminSessionsResponse,
   ApiError,
 } from '../types';
 
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || 'http://127.0.0.1:8000';
+function getDefaultApiBaseUrl() {
+  const { hostname, protocol } = window.location;
+
+  if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return `${protocol}//${hostname}:8000`;
+  }
+
+  return 'http://127.0.0.1:8000';
+}
+
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || getDefaultApiBaseUrl();
 
 type JsonRecord = {
   ok?: boolean;
@@ -53,6 +64,17 @@ async function adminPost<T>(endpoint: string, adminKey: string, body: Record<str
   return readJsonResponse<T>(response);
 }
 
+async function adminDelete<T>(endpoint: string, adminKey: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'DELETE',
+    headers: {
+      'X-Admin-Key': adminKey,
+    },
+  });
+
+  return readJsonResponse<T>(response);
+}
+
 export function getAdminSessions(adminKey: string, limit = 50, offset = 0) {
   const params = new URLSearchParams({
     limit: String(limit),
@@ -75,6 +97,10 @@ export function saveAdminDecision(adminKey: string, sessionId: string, decision:
     decision,
     admin_note: adminNote?.trim() || undefined,
   });
+}
+
+export function deleteAdminSession(adminKey: string, sessionId: string) {
+  return adminDelete<AdminDeleteSessionResponse>(`/admin/sessions/${sessionId}`, adminKey);
 }
 
 export function buildAdminMediaUrl(sessionId: string, mediaKind: 'document' | 'id_face' | 'selfie' | 'liveness_video') {

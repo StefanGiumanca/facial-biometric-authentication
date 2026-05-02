@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getKyc, postKyc } from '@/constants/api';
+import { API_BASE_URL, getKyc } from '@/constants/api';
 
 type SessionStatus = {
   ok?: boolean;
@@ -38,6 +38,8 @@ type FaceMatchResult = {
   accept_threshold?: number;
   review_threshold?: number;
   error?: string;
+  session_locked?: boolean;
+  reject_reason?: string;
   [key: string]: unknown;
 };
 
@@ -77,7 +79,7 @@ export default function ResultScreen() {
         return;
       }
 
-      const faceMatch = (await postKyc('/kyc/face-match')) as FaceMatchResult;
+      const faceMatch = await postFaceMatchResult();
       setMatchResult(faceMatch);
     } catch (loadError) {
       console.log('Result load error:', loadError);
@@ -87,7 +89,7 @@ export default function ResultScreen() {
     }
   };
 
-  const decision = getBackendDecision(matchResult, getParamValue(params.decision));
+  const decision = isLoading ? null : getBackendDecision(matchResult, getParamValue(params.decision));
   const ticket = getTicketState({ decision, error, isLoading, matchResult, status });
   const fullName = getDisplayName(status, params);
   const faceDistance = getFaceDistance(matchResult);
@@ -115,10 +117,10 @@ export default function ResultScreen() {
           <View style={styles.divider} />
 
           <DetailRow label="Name" value={fullName} />
-          <DetailRow label="Session ID" value={String(status?.session_id ?? 'Unavailable')} />
+          <DetailRow label="Session ID" value={isLoading ? 'Checking...' : String(status?.session_id ?? 'Unavailable')} />
           <DetailRow label="Timestamp" value={new Date().toLocaleString()} />
-          <DetailRow label="Backend decision" value={decision ?? ticket.badge} />
-          <DetailRow label="Face match distance" value={faceDistance} />
+          <DetailRow label="Backend decision" value={isLoading ? 'Checking...' : decision ?? ticket.badge} />
+          <DetailRow label="Face match distance" value={isLoading ? 'Checking...' : faceDistance} />
         </View>
 
         <View style={styles.actions}>
@@ -139,6 +141,19 @@ function returnToStart() {
   router.replace('/');
 }
 
+async function postFaceMatchResult() {
+  const response = await fetch(`${API_BASE_URL}/kyc/face-match`, {
+    method: 'POST',
+  });
+  const data = (await response.json()) as FaceMatchResult;
+
+  if (!response.ok || (data.ok === false && !data.session_locked && !data.reject_reason)) {
+    throw new Error(data.error || 'Could not load verification result.');
+  }
+
+  return data;
+}
+
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.detailRow}>
@@ -149,7 +164,23 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 function getBackendDecision(matchResult: FaceMatchResult | null, fallbackDecision?: string) {
-  return String(matchResult?.session_status || matchResult?.decision || matchResult?.final_decision || fallbackDecision || '').toUpperCase() || null;
+  const rawDecision = String(
+    matchResult?.session_status || matchResult?.decision || matchResult?.final_decision || fallbackDecision || ''
+  ).toUpperCase();
+
+  if (rawDecision) {
+    return rawDecision;
+  }
+
+  if (matchResult?.session_locked || matchResult?.reject_reason) {
+    return 'REJECTED';
+  }
+
+  if (matchResult?.passed === true) {
+    return 'ACCEPTED';
+  }
+
+  return null;
 }
 
 function getTicketState({
@@ -205,22 +236,32 @@ function getTicketState({
     };
   }
 
-  if (error || !status?.ready_for_face_match || !matchResult) {
+  if (!status?.ready_for_face_match && !error) {
+    return {
+      badge: 'CHECKING',
+      title: 'Checking verification...',
+      description: 'Please wait while we process your identity.',
+      color: '#60A5FA',
+      badgeBackground: '#172554',
+    };
+  }
+
+  if (error) {
     return {
       badge: 'UNAVAILABLE',
       title: 'Result unavailable',
-      description: 'Error processing face-match result.',
+      description: 'The backend request failed before a verification decision could be loaded.',
       color: '#EF4444',
       badgeBackground: '#3F1218',
     };
   }
 
   return {
-    badge: 'UNAVAILABLE',
-    title: 'Result unavailable',
-    description: 'Error processing face-match result.',
-    color: '#EF4444',
-    badgeBackground: '#3F1218',
+    badge: 'CHECKING',
+    title: 'Checking verification...',
+    description: 'Please wait while we process your identity.',
+    color: '#60A5FA',
+    badgeBackground: '#172554',
   };
 }
 
