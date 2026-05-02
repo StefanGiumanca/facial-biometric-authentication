@@ -28,6 +28,11 @@ class KycSession(Base):
     last_name: Mapped[str | None] = mapped_column(String(128))
     cnp: Mapped[str | None] = mapped_column(String(32))
     series_number: Mapped[str | None] = mapped_column(String(32))
+    sex: Mapped[str | None] = mapped_column(String(8))
+    nationality: Mapped[str | None] = mapped_column(String(64))
+    address: Mapped[str | None] = mapped_column(Text)
+    valid_from: Mapped[str | None] = mapped_column(String(32))
+    valid_until: Mapped[str | None] = mapped_column(String(32))
     raw_ocr_text: Mapped[str | None] = mapped_column(Text)
 
     liveness_passed: Mapped[bool | None] = mapped_column(Boolean)

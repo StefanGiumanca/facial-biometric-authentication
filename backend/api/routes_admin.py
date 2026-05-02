@@ -4,11 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from backend.services.db_service import (
     get_admin_session_detail,
     get_admin_session_logs,
     get_admin_sessions,
+    set_admin_session_decision,
 )
 
 
@@ -20,6 +22,11 @@ ALLOWED_MEDIA_FIELDS = {
     "selfie": "selfie_path",
     "liveness_video": "liveness_video_path",
 }
+
+
+class AdminDecisionPayload(BaseModel):
+    decision: str = Field(pattern="^(ACCEPTED|REJECTED)$")
+    admin_note: str | None = Field(default=None, max_length=500)
 
 
 def verify_admin_key(x_admin_key: Annotated[str | None, Header()] = None):
@@ -72,6 +79,34 @@ def admin_get_session_logs(
         "ok": True,
         "session_id": session_id,
         "logs": logs,
+    }
+
+
+@router.post("/sessions/{session_id}/decision")
+def admin_set_session_decision(
+    session_id: str,
+    payload: AdminDecisionPayload,
+    x_admin_key: Annotated[str | None, Header()] = None,
+):
+    verify_admin_key(x_admin_key)
+    admin_note = payload.admin_note.strip() if payload.admin_note else None
+
+    try:
+        result = set_admin_session_decision(
+            session_id=session_id,
+            decision=payload.decision,
+            admin_note=admin_note,
+        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not save admin decision")
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "ok": True,
+        "message": "Decision saved successfully",
+        "session": result,
     }
 
 

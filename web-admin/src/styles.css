@@ -44,7 +44,9 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -285,6 +287,14 @@ pre {
   margin-bottom: 1rem;
 }
 
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 240px) auto;
+  gap: 0.9rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
 .filter-pill {
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.88);
@@ -492,6 +502,7 @@ pre {
 .review-actions {
   display: grid;
   gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 .ocr-preview {
@@ -511,7 +522,16 @@ pre {
 }
 
 .empty-state,
+.success-banner,
 .error-banner {
+  display: grid;
+  place-items: center;
+  border-radius: 1.1rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.empty-state {
   display: grid;
   place-items: center;
   min-height: 9rem;
@@ -533,6 +553,14 @@ pre {
   border-style: solid;
   border-color: rgba(239, 68, 68, 0.18);
   background: rgba(127, 29, 29, 0.22);
+}
+
+.success-banner {
+  min-height: auto;
+  margin-bottom: 1rem;
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: rgba(20, 83, 45, 0.24);
 }
 
 .auth-layout {
@@ -584,7 +612,9 @@ pre {
   color: var(--muted);
 }
 
-.field input {
+.field input,
+.field select,
+.field textarea {
   width: 100%;
   padding: 0.9rem 1rem;
   border-radius: 0.95rem;
@@ -593,7 +623,22 @@ pre {
   color: white;
 }
 
-.field input:focus {
+.field textarea {
+  resize: vertical;
+  min-height: 7rem;
+}
+
+.field--compact {
+  min-width: 0;
+}
+
+.button--direction {
+  min-height: 3.15rem;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
   outline: 2px solid rgba(96, 165, 250, 0.45);
   border-color: rgba(96, 165, 250, 0.4);
 }
@@ -624,7 +669,8 @@ pre {
   .metric-grid,
   .detail-layout,
   .auth-layout,
-  .media-grid {
+  .media-grid,
+  .toolbar {
     grid-template-columns: 1fr;
   }
 

@@ -125,6 +125,11 @@ async def extract_document(file: UploadFile = File(...)):
         last_name=parsed.get("last_name"),
         cnp=parsed.get("cnp"),
         series_number=parsed.get("series_number"),
+        sex=parsed.get("sex"),
+        nationality=parsed.get("nationality"),
+        address=parsed.get("address"),
+        valid_from=parsed.get("valid_from"),
+        valid_until=parsed.get("valid_until"),
         raw_ocr_text=full_text,
     )
     log_audit_event(session_id, "OCR_COMPLETED", "OCR extraction completed")
@@ -198,6 +203,11 @@ def validate_document_review(payload: DocumentReviewPayload):
         last_name=reviewed_fields.get("last_name"),
         cnp=reviewed_fields.get("cnp"),
         series_number=reviewed_fields.get("series_number"),
+        sex=reviewed_fields.get("sex"),
+        nationality=reviewed_fields.get("nationality"),
+        address=reviewed_fields.get("address"),
+        valid_from=reviewed_fields.get("valid_from"),
+        valid_until=reviewed_fields.get("valid_until"),
     )
     if not result["ok"]:
         log_audit_event(session_id, "VALIDATION_FAILED", "OCR review validation failed")

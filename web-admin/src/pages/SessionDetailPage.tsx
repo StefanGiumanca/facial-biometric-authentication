@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   BrandHeader,
@@ -11,11 +11,12 @@ import {
   TopNav,
 } from '../components';
 import { useAdminAuth } from '../auth';
-import { API_BASE_URL, buildAdminMediaUrl, getAdminSessionDetail, getAdminSessionLogs } from '../lib/api';
+import { API_BASE_URL, buildAdminMediaUrl, getAdminSessionDetail, getAdminSessionLogs, saveAdminDecision } from '../lib/api';
 import { formatDateTime, formatDecisionWithDistance } from '../lib/utils';
-import type { AuditLogEntry, SessionDetail } from '../types';
+import type { AdminDecision, AuditLogEntry, SessionDetail } from '../types';
 
 const TOOL_LABELS = ['EasyOCR', 'OpenCV', 'MediaPipe', 'face_recognition'];
+const EMPTY_VALUE = 'No value recorded for this session';
 
 export function SessionDetailPage() {
   const { sessionId = '' } = useParams();
@@ -24,12 +25,17 @@ export function SessionDetailPage() {
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSavingDecision, setIsSavingDecision] = useState(false);
+  const [adminNote, setAdminNote] = useState('');
   const [error, setError] = useState('');
+  const [decisionMessage, setDecisionMessage] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadData = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) {
+        setIsLoading(true);
+      }
 
-    async function loadData() {
       try {
         setError('');
         const [detailResponse, logsResponse] = await Promise.all([
@@ -37,32 +43,47 @@ export function SessionDetailPage() {
           getAdminSessionLogs(adminKey, sessionId),
         ]);
 
-        if (!cancelled) {
-          setSession(detailResponse.session);
-          setLogs(logsResponse.logs);
-        }
+        setSession(detailResponse.session);
+        setLogs(logsResponse.logs);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load session detail.';
-        if (!cancelled) {
-          setError(message);
-          if (message.toLowerCase().includes('invalid') || message.includes('403')) {
-            clearAdminKey();
-            navigate('/login');
-          }
+        setError(message);
+        if (message.toLowerCase().includes('invalid') || message.includes('403')) {
+          clearAdminKey();
+          navigate('/login');
         }
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
+    },
+    [adminKey, clearAdminKey, navigate, sessionId],
+  );
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  async function handleDecision(decision: AdminDecision) {
+    const actionLabel = decision === 'ACCEPTED' ? 'approve' : 'reject';
+    const confirmed = window.confirm(`Confirm that you want to ${actionLabel} this KYC session?`);
+    if (!confirmed) {
+      return;
     }
 
-    loadData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [adminKey, clearAdminKey, navigate, sessionId]);
+    try {
+      setIsSavingDecision(true);
+      setError('');
+      setDecisionMessage('');
+      const response = await saveAdminDecision(adminKey, sessionId, decision, adminNote);
+      setDecisionMessage(response.message || 'Decision saved successfully');
+      setAdminNote('');
+      await loadData(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save admin decision.');
+    } finally {
+      setIsSavingDecision(false);
+    }
+  }
 
   return (
     <Shell>
@@ -82,12 +103,13 @@ export function SessionDetailPage() {
       />
 
       {error ? <div className="error-banner">{error}</div> : null}
+      {decisionMessage ? <div className="success-banner">{decisionMessage}</div> : null}
       {isLoading ? <div className="empty-state">Loading session details...</div> : null}
 
       {session ? (
         <>
           <div className="metric-grid">
-            <MetricCard label="Final decision" value={session.final_decision || 'Pending'} helper={`Status: ${session.status}`} />
+            <MetricCard label="Final decision" value={session.final_decision || 'Manual decision required'} helper={`Status: ${session.status}`} />
             <MetricCard
               label="Liveness"
               value={session.liveness_passed ? 'Passed' : session.liveness_passed === false ? 'Failed' : 'Pending'}
@@ -101,24 +123,24 @@ export function SessionDetailPage() {
             <MetricCard
               label="Security fails"
               value={`${session.security_fail_count ?? 0}/3`}
-              helper={session.reject_reason || 'No reject reason stored'}
+              helper={session.reject_reason || 'No rejection note recorded'}
             />
           </div>
 
           <div className="detail-layout">
             <div className="detail-layout__main">
-              <SectionCard title="Identity Data" hint="Fields captured by the current backend schema and review flow.">
+              <SectionCard title="Identity Data" hint="Identity values captured from OCR and operator review.">
                 <DetailGrid
                   rows={[
-                    { label: 'First Name', value: session.first_name || 'N/A' },
-                    { label: 'Last Name', value: session.last_name || 'N/A' },
-                    { label: 'CNP', value: session.cnp || 'N/A' },
-                    { label: 'Series Number', value: session.series_number || 'N/A' },
-                    { label: 'Sex', value: 'Not stored in current backend schema', subtle: true },
-                    { label: 'Nationality', value: 'Not stored in current backend schema', subtle: true },
-                    { label: 'Address', value: 'Not stored in current backend schema', subtle: true },
-                    { label: 'Valid From', value: 'Not stored in current backend schema', subtle: true },
-                    { label: 'Valid Until', value: 'Not stored in current backend schema', subtle: true },
+                    { label: 'First Name', value: session.first_name || EMPTY_VALUE, subtle: !session.first_name },
+                    { label: 'Last Name', value: session.last_name || EMPTY_VALUE, subtle: !session.last_name },
+                    { label: 'CNP', value: session.cnp || EMPTY_VALUE, subtle: !session.cnp },
+                    { label: 'Series Number', value: session.series_number || EMPTY_VALUE, subtle: !session.series_number },
+                    { label: 'Sex', value: session.sex || EMPTY_VALUE, subtle: !session.sex },
+                    { label: 'Nationality', value: session.nationality || EMPTY_VALUE, subtle: !session.nationality },
+                    { label: 'Address', value: session.address || EMPTY_VALUE, subtle: !session.address },
+                    { label: 'Valid From', value: session.valid_from || EMPTY_VALUE, subtle: !session.valid_from },
+                    { label: 'Valid Until', value: session.valid_until || EMPTY_VALUE, subtle: !session.valid_until },
                   ]}
                 />
               </SectionCard>
@@ -126,7 +148,7 @@ export function SessionDetailPage() {
               <SectionCard title="Verification Results" hint="Core liveness, matching, and session decision data.">
                 <DetailGrid
                   rows={[
-                    { label: 'Final Decision', value: <StatusBadge label={session.final_decision || 'PENDING'} /> },
+                    { label: 'Final Decision', value: <StatusBadge label={session.final_decision || 'MANUAL_REVIEW'} /> },
                     { label: 'Status', value: <StatusBadge label={session.status} /> },
                     {
                       label: 'Liveness Passed',
@@ -139,13 +161,15 @@ export function SessionDetailPage() {
                           ? session.final_face_match_distance.toFixed(3)
                           : typeof session.face_match_distance === 'number'
                             ? session.face_match_distance.toFixed(3)
-                            : 'N/A',
+                          : EMPTY_VALUE,
                     },
                     {
                       label: 'Face Match Decision',
-                      value:
-                        formatDecisionWithDistance(session.final_face_match_decision, session.final_face_match_distance) ||
-                        formatDecisionWithDistance(session.face_match_decision, session.face_match_distance),
+                      value: session.final_face_match_decision
+                        ? formatDecisionWithDistance(session.final_face_match_decision, session.final_face_match_distance)
+                        : session.face_match_decision
+                          ? formatDecisionWithDistance(session.face_match_decision, session.face_match_distance)
+                          : EMPTY_VALUE,
                     },
                     {
                       label: 'Selfie Gate',
@@ -168,7 +192,7 @@ export function SessionDetailPage() {
                     ) : (
                       <div className="media-fallback">No ID face image available.</div>
                     )}
-                    <code>{session.id_face_path || 'TODO: backend did not return an ID face path.'}</code>
+                    <code>{session.id_face_path || EMPTY_VALUE}</code>
                   </div>
 
                   <div className="media-card">
@@ -182,12 +206,12 @@ export function SessionDetailPage() {
                     ) : (
                       <div className="media-fallback">No selfie image available.</div>
                     )}
-                    <code>{session.selfie_path || 'TODO: backend did not return a selfie path.'}</code>
+                    <code>{session.selfie_path || EMPTY_VALUE}</code>
                   </div>
                 </div>
                 <p className="note-text">
-                  Preview URLs come from protected admin routes under <code>{API_BASE_URL}/admin/sessions/:id/media/:kind</code>. If an image
-                  does not render in your browser, the stored file may be missing on disk.
+                  Preview images are served through protected admin routes under <code>{API_BASE_URL}/admin/sessions/:id/media/:kind</code>.
+                  Review the biometric evidence before approving or rejecting.
                 </p>
               </SectionCard>
 
@@ -197,20 +221,35 @@ export function SessionDetailPage() {
             </div>
 
             <aside className="detail-layout__side">
-              <SectionCard title="Manual Review Controls" hint="UI is present, but decision endpoints are not implemented yet.">
+              <SectionCard title="Manual Decision" hint="Review the biometric evidence before approving or rejecting.">
+                <label className="field">
+                  <span>Admin note</span>
+                  <textarea
+                    value={adminNote}
+                    onChange={(event) => setAdminNote(event.target.value)}
+                    placeholder="Optional note for the audit log"
+                    rows={4}
+                    maxLength={500}
+                  />
+                </label>
                 <div className="review-actions">
-                  <button type="button" className="button button--success" disabled>
-                    Approve
+                  <button
+                    type="button"
+                    className="button button--success"
+                    disabled={isSavingDecision}
+                    onClick={() => handleDecision('ACCEPTED')}>
+                    {isSavingDecision ? 'Saving...' : 'Approve'}
                   </button>
-                  <button type="button" className="button button--danger" disabled>
-                    Reject
-                  </button>
-                  <button type="button" className="button button--warning" disabled>
-                    Mark Manual Review
+                  <button
+                    type="button"
+                    className="button button--danger"
+                    disabled={isSavingDecision}
+                    onClick={() => handleDecision('REJECTED')}>
+                    {isSavingDecision ? 'Saving...' : 'Reject'}
                   </button>
                 </div>
                 <p className="note-text">
-                  Coming soon. A dedicated backend endpoint is required before these actions can safely change session outcomes.
+                  Approved sessions are marked <code>ACCEPTED</code>; rejected sessions are marked <code>REJECTED</code> and the note is retained in the audit log.
                 </p>
               </SectionCard>
 
@@ -220,7 +259,7 @@ export function SessionDetailPage() {
                     { label: 'Session ID', value: session.session_id },
                     { label: 'Created', value: formatDateTime(session.created_at) },
                     { label: 'Updated', value: formatDateTime(session.updated_at) },
-                    { label: 'Reject Reason', value: session.reject_reason || 'N/A' },
+                    { label: 'Reject Reason', value: session.reject_reason || EMPTY_VALUE, subtle: !session.reject_reason },
                     { label: 'Locked At', value: formatDateTime(session.locked_at) },
                     { label: 'Libraries', value: TOOL_LABELS.join(', ') },
                   ]}
@@ -228,12 +267,12 @@ export function SessionDetailPage() {
               </SectionCard>
 
               <SectionCard title="OCR Raw Text" hint="Preview of the raw OCR text stored with the session.">
-                <pre className="ocr-preview">{session.raw_ocr_text || 'No OCR raw text was stored for this session.'}</pre>
+                <pre className="ocr-preview">{session.raw_ocr_text || 'No value recorded for this session'}</pre>
               </SectionCard>
 
               <SectionCard title="Embedding Metadata" hint="Admin detail now includes metadata without exposing full vectors.">
                 {session.embeddings.length === 0 ? (
-                  <div className="empty-state empty-state--compact">No embedding metadata returned for this session.</div>
+                  <div className="empty-state empty-state--compact">No value recorded for this session.</div>
                 ) : (
                   <div className="embedding-list">
                     {session.embeddings.map((embedding) => (
@@ -244,7 +283,7 @@ export function SessionDetailPage() {
                           Preview:{' '}
                           {embedding.vector_preview?.length
                             ? `[${embedding.vector_preview.map((value) => value.toFixed(3)).join(', ')}]`
-                            : 'N/A'}
+                            : EMPTY_VALUE}
                         </span>
                         <span>Created: {formatDateTime(embedding.created_at)}</span>
                       </div>

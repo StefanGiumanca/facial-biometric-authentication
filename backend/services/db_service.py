@@ -64,6 +64,41 @@ def store_embedding(session_id: str, embedding_type: str, embedding_vector: dict
     _run_db_write(operation)
 
 
+def set_admin_session_decision(session_id: str, decision: str, admin_note: str | None = None) -> dict | None:
+    """Persist a final manual decision and audit event for an admin review."""
+    event_type = "ADMIN_APPROVED" if decision == "ACCEPTED" else "ADMIN_REJECTED"
+    audit_message = "Admin approved this KYC session." if decision == "ACCEPTED" else "Admin rejected this KYC session."
+    if admin_note:
+        audit_message = f"{audit_message} Note: {admin_note}"
+
+    try:
+        with SessionLocal() as db:
+            session = db.get(KycSession, session_id)
+            if session is None:
+                return None
+
+            session.status = decision
+            session.final_decision = decision
+            if decision == "REJECTED":
+                session.reject_reason = admin_note or "Rejected by admin manual review"
+            elif session.reject_reason == "Rejected by admin manual review":
+                session.reject_reason = None
+
+            db.add(AuditLog(session_id=session_id, event_type=event_type, message=audit_message))
+            db.commit()
+            db.refresh(session)
+
+            return {
+                "session_id": session.id,
+                "status": session.status,
+                "final_decision": session.final_decision,
+                "reject_reason": session.reject_reason,
+            }
+    except SQLAlchemyError as error:
+        print(f"[DB] Admin set decision failed: {error}")
+        raise
+
+
 # ========== ADMIN/AUDIT ENDPOINTS ==========
 
 def get_admin_sessions(limit: int = 50, offset: int = 0) -> list[dict]:
@@ -86,6 +121,11 @@ def get_admin_sessions(limit: int = 50, offset: int = 0) -> list[dict]:
                     "last_name": session.last_name,
                     "cnp": session.cnp,
                     "series_number": session.series_number,
+                    "sex": session.sex,
+                    "nationality": session.nationality,
+                    "address": session.address,
+                    "valid_from": session.valid_from,
+                    "valid_until": session.valid_until,
                     "liveness_passed": session.liveness_passed,
                     "selfie_gate_distance": session.selfie_gate_distance,
                     "selfie_gate_decision": session.selfie_gate_decision,
@@ -122,6 +162,11 @@ def get_admin_session_detail(session_id: str) -> dict | None:
                 "last_name": session.last_name,
                 "cnp": session.cnp,
                 "series_number": session.series_number,
+                "sex": session.sex,
+                "nationality": session.nationality,
+                "address": session.address,
+                "valid_from": session.valid_from,
+                "valid_until": session.valid_until,
                 "document_path": session.document_path,
                 "id_face_path": session.id_face_path,
                 "selfie_path": session.selfie_path,

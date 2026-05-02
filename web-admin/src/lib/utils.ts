@@ -1,6 +1,8 @@
 import type { AdminSession } from '../types';
 
 export type SessionFilter = 'ALL' | 'VERIFIED' | 'REJECTED' | 'MANUAL_REVIEW' | 'IN_PROGRESS';
+export type SessionSortKey = 'updated_at' | 'created_at' | 'name' | 'final_decision' | 'face_match_distance';
+export type SortDirection = 'asc' | 'desc';
 
 export function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -76,4 +78,69 @@ export function formatDecisionWithDistance(decision?: string | null, distance?: 
   }
 
   return decision;
+}
+
+export function getFaceMatchDistance(session: AdminSession) {
+  if (typeof session.final_face_match_distance === 'number') {
+    return session.final_face_match_distance;
+  }
+
+  if (typeof session.face_match_distance === 'number') {
+    return session.face_match_distance;
+  }
+
+  return null;
+}
+
+export function sessionMatchesSearch(session: AdminSession, searchTerm: string) {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  const searchableValues = [
+    session.first_name,
+    session.last_name,
+    session.cnp,
+    session.session_id,
+    session.final_decision,
+    session.face_match_decision,
+    session.final_face_match_decision,
+  ];
+
+  return searchableValues.some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
+}
+
+export function sortSessions(sessions: AdminSession[], sortKey: SessionSortKey, direction: SortDirection) {
+  const multiplier = direction === 'asc' ? 1 : -1;
+
+  return [...sessions].sort((a, b) => {
+    if (sortKey === 'updated_at' || sortKey === 'created_at') {
+      return (new Date(a[sortKey]).getTime() - new Date(b[sortKey]).getTime()) * multiplier;
+    }
+
+    if (sortKey === 'name') {
+      return getDisplayName(a.first_name, a.last_name).localeCompare(getDisplayName(b.first_name, b.last_name)) * multiplier;
+    }
+
+    if (sortKey === 'final_decision') {
+      return normalizeDecision(a).localeCompare(normalizeDecision(b)) * multiplier;
+    }
+
+    const rawDistanceA = getFaceMatchDistance(a);
+    const rawDistanceB = getFaceMatchDistance(b);
+    if (rawDistanceA === null && rawDistanceB === null) {
+      return 0;
+    }
+    if (rawDistanceA === null) {
+      return 1;
+    }
+    if (rawDistanceB === null) {
+      return -1;
+    }
+
+    const distanceA = rawDistanceA;
+    const distanceB = rawDistanceB;
+    return (distanceA - distanceB) * multiplier;
+  });
 }

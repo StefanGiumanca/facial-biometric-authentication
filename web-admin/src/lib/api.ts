@@ -1,4 +1,6 @@
 import type {
+  AdminDecision,
+  AdminDecisionResponse,
   AdminSessionDetailResponse,
   AdminSessionLogsResponse,
   AdminSessionsResponse,
@@ -10,7 +12,7 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undef
 type JsonRecord = {
   ok?: boolean;
   error?: string;
-  detail?: string;
+  detail?: unknown;
   [key: string]: unknown;
 };
 
@@ -18,9 +20,10 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   const data = (await response.json()) as JsonRecord;
 
   if (!response.ok || data.ok === false) {
-    const error = new Error(data.error || data.detail || `Request failed with status ${response.status}`) as ApiError;
+    const detail = typeof data.detail === 'string' ? data.detail : undefined;
+    const error = new Error(data.error || detail || `Request failed with status ${response.status}`) as ApiError;
     error.status = response.status;
-    error.detail = typeof data.detail === 'string' ? data.detail : undefined;
+    error.detail = detail;
     throw error;
   }
 
@@ -32,6 +35,19 @@ async function adminGet<T>(endpoint: string, adminKey: string): Promise<T> {
     headers: {
       'X-Admin-Key': adminKey,
     },
+  });
+
+  return readJsonResponse<T>(response);
+}
+
+async function adminPost<T>(endpoint: string, adminKey: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': adminKey,
+    },
+    body: JSON.stringify(body),
   });
 
   return readJsonResponse<T>(response);
@@ -52,6 +68,13 @@ export function getAdminSessionDetail(adminKey: string, sessionId: string) {
 
 export function getAdminSessionLogs(adminKey: string, sessionId: string) {
   return adminGet<AdminSessionLogsResponse>(`/admin/sessions/${sessionId}/logs`, adminKey);
+}
+
+export function saveAdminDecision(adminKey: string, sessionId: string, decision: AdminDecision, adminNote?: string) {
+  return adminPost<AdminDecisionResponse>(`/admin/sessions/${sessionId}/decision`, adminKey, {
+    decision,
+    admin_note: adminNote?.trim() || undefined,
+  });
 }
 
 export function buildAdminMediaUrl(sessionId: string, mediaKind: 'document' | 'id_face' | 'selfie' | 'liveness_video') {

@@ -6,6 +6,11 @@ export type AdminSession = {
   last_name: string | null;
   cnp: string | null;
   series_number: string | null;
+  sex: string | null;
+  nationality: string | null;
+  address: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
   liveness_passed: boolean | null;
   selfie_gate_distance: number | null;
   selfie_gate_decision: string | null;
@@ -37,6 +42,11 @@ export type SessionDetail = {
   last_name: string | null;
   cnp: string | null;
   series_number: string | null;
+  sex: string | null;
+  nationality: string | null;
+  address: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
   document_path: string | null;
   id_face_path: string | null;
   selfie_path: string | null;
@@ -85,4 +95,17 @@ export type AdminSessionLogsResponse = {
 export type ApiError = Error & {
   status?: number;
   detail?: string;
+};
+
+export type AdminDecision = 'ACCEPTED' | 'REJECTED';
+
+export type AdminDecisionResponse = {
+  ok: boolean;
+  message: string;
+  session: {
+    session_id: string;
+    status: string;
+    final_decision: AdminDecision;
+    reject_reason: string | null;
+  };
 };
