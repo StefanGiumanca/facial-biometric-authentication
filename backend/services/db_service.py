@@ -138,6 +138,7 @@ def get_admin_session_detail(session_id: str) -> dict | None:
                 "security_fail_count": session.security_fail_count,
                 "reject_reason": session.reject_reason,
                 "locked_at": session.locked_at,
+                "embeddings": get_admin_embedding_metadata(session_id),
             }
     except SQLAlchemyError as error:
         print(f"[DB] Admin get_session_detail failed: {error}")

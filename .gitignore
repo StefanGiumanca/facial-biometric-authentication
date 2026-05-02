@@ -25,3 +25,10 @@ SECURITY_HARDENING_TEST_PLAN.md
 SECURITY_LOCK_TEST_PLAN.md
 
 recovery/
+
+# Web admin frontend
+web-admin/node_modules/
+web-admin/dist/
+web-admin/*.tsbuildinfo
+web-admin/vite.config.js
+web-admin/vite.config.d.ts
