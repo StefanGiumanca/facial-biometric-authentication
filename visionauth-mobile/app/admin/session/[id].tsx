@@ -93,6 +93,11 @@ export default function AdminSessionDetailScreen() {
             <DetailRow label="Last Name" value={session.last_name || 'N/A'} />
             <DetailRow label="CNP" value={session.cnp || 'N/A'} />
             <DetailRow label="Series/Number" value={session.series_number || 'N/A'} />
+            <DetailRow label="Sex" value={session.sex || 'N/A'} />
+            <DetailRow label="Nationality" value={session.nationality || 'N/A'} />
+            <DetailRow label="Address" value={session.address || 'N/A'} />
+            <DetailRow label="Valid From" value={session.valid_from || 'N/A'} />
+            <DetailRow label="Valid Until" value={session.valid_until || 'N/A'} />
           </View>
         </View>
 

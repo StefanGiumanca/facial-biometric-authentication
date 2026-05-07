@@ -1,11 +1,14 @@
-export const WIFI_API_BASE_URL = 'http://192.168.1.131:8000';
+export const CONNECTION_MODE: 'wifi' | 'ngrok' = 'ngrok';
+
+export const WIFI_API_BASE_URL = 'http://172.20.10.13:8000';
 export const NGROK_API_BASE_URL = 'https://reward-botanist-tag.ngrok-free.dev';
 
-export const API_BASE_URL = WIFI_API_BASE_URL; // Change this to switch between local and ngrok backend
-
 export const LOCAL_WEB_ADMIN_URL = 'http://127.0.0.1:5173';
-export const WIFI_WEB_ADMIN_URL = 'http://192.168.1.131:5173';
-export const WEB_ADMIN_URL = WIFI_WEB_ADMIN_URL; // Use this on a physical phone connected to the same Wi-Fi as the PC
+export const WIFI_WEB_ADMIN_URL = 'http://172.20.10.13:5173';
+export const NGROK_WEB_ADMIN_URL = 'http://172.20.10.13:5173';
+
+export const API_BASE_URL = CONNECTION_MODE === 'ngrok' ? NGROK_API_BASE_URL : WIFI_API_BASE_URL;
+export const WEB_ADMIN_URL = CONNECTION_MODE === 'ngrok' ? NGROK_WEB_ADMIN_URL : WIFI_WEB_ADMIN_URL;
 
 export type UploadAsset = {
   uri: string;

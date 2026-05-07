@@ -10,6 +10,32 @@ from backend.db.database import SessionLocal
 from backend.models.database_models import AuditLog, EmbeddingRecord, KycSession
 
 
+def _derive_sex_from_cnp(cnp: str | None) -> str | None:
+    if not cnp or len(cnp) != 13 or not cnp.isdigit():
+        return None
+
+    if cnp[0] in {"1", "3", "5", "7"}:
+        return "M"
+    if cnp[0] in {"2", "4", "6", "8"}:
+        return "F"
+
+    return None
+
+
+def _identity_value(session: KycSession, field: str):
+    value = getattr(session, field)
+    if value:
+        return value
+
+    if field == "sex":
+        return _derive_sex_from_cnp(session.cnp)
+
+    if field == "nationality" and session.cnp:
+        return "Romana"
+
+    return value
+
+
 def _run_db_write(operation: Callable[[Session], None]):
     try:
         with SessionLocal() as db:
@@ -139,11 +165,11 @@ def get_admin_sessions(limit: int = 50, offset: int = 0) -> list[dict]:
                     "last_name": session.last_name,
                     "cnp": session.cnp,
                     "series_number": session.series_number,
-                    "sex": session.sex,
-                    "nationality": session.nationality,
-                    "address": session.address,
-                    "valid_from": session.valid_from,
-                    "valid_until": session.valid_until,
+                    "sex": _identity_value(session, "sex"),
+                    "nationality": _identity_value(session, "nationality"),
+                    "address": _identity_value(session, "address"),
+                    "valid_from": _identity_value(session, "valid_from"),
+                    "valid_until": _identity_value(session, "valid_until"),
                     "liveness_passed": session.liveness_passed,
                     "selfie_gate_distance": session.selfie_gate_distance,
                     "selfie_gate_decision": session.selfie_gate_decision,
@@ -180,11 +206,11 @@ def get_admin_session_detail(session_id: str) -> dict | None:
                 "last_name": session.last_name,
                 "cnp": session.cnp,
                 "series_number": session.series_number,
-                "sex": session.sex,
-                "nationality": session.nationality,
-                "address": session.address,
-                "valid_from": session.valid_from,
-                "valid_until": session.valid_until,
+                "sex": _identity_value(session, "sex"),
+                "nationality": _identity_value(session, "nationality"),
+                "address": _identity_value(session, "address"),
+                "valid_from": _identity_value(session, "valid_from"),
+                "valid_until": _identity_value(session, "valid_until"),
                 "document_path": session.document_path,
                 "id_face_path": session.id_face_path,
                 "selfie_path": session.selfie_path,

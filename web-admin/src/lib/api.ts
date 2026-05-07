@@ -18,7 +18,37 @@ function getDefaultApiBaseUrl() {
   return 'http://127.0.0.1:8000';
 }
 
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || getDefaultApiBaseUrl();
+function getConfiguredApiBaseUrl() {
+  const explicitApiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (explicitApiBaseUrl) {
+    return explicitApiBaseUrl;
+  }
+
+  const connectionMode = (import.meta.env.VITE_CONNECTION_MODE as string | undefined)?.trim();
+  const wifiApiBaseUrl = (import.meta.env.VITE_WIFI_API_BASE_URL as string | undefined)?.trim();
+  const ngrokApiBaseUrl = (import.meta.env.VITE_NGROK_API_BASE_URL as string | undefined)?.trim();
+
+  if (connectionMode === 'ngrok' && ngrokApiBaseUrl) {
+    return ngrokApiBaseUrl;
+  }
+
+  if (connectionMode === 'wifi' && wifiApiBaseUrl) {
+    return wifiApiBaseUrl;
+  }
+
+  return getDefaultApiBaseUrl();
+}
+
+export const API_BASE_URL = getConfiguredApiBaseUrl();
+export const NGROK_SKIP_WARNING_HEADER = 'ngrok-skip-browser-warning';
+
+export function buildAdminHeaders(adminKey: string, extraHeaders: HeadersInit = {}): HeadersInit {
+  return {
+    ...extraHeaders,
+    'X-Admin-Key': adminKey,
+    [NGROK_SKIP_WARNING_HEADER]: 'true',
+  };
+}
 
 type JsonRecord = {
   ok?: boolean;
@@ -43,9 +73,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
 
 async function adminGet<T>(endpoint: string, adminKey: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: {
-      'X-Admin-Key': adminKey,
-    },
+    headers: buildAdminHeaders(adminKey),
   });
 
   return readJsonResponse<T>(response);
@@ -54,10 +82,9 @@ async function adminGet<T>(endpoint: string, adminKey: string): Promise<T> {
 async function adminPost<T>(endpoint: string, adminKey: string, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
-    headers: {
+    headers: buildAdminHeaders(adminKey, {
       'Content-Type': 'application/json',
-      'X-Admin-Key': adminKey,
-    },
+    }),
     body: JSON.stringify(body),
   });
 
@@ -67,9 +94,7 @@ async function adminPost<T>(endpoint: string, adminKey: string, body: Record<str
 async function adminDelete<T>(endpoint: string, adminKey: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'DELETE',
-    headers: {
-      'X-Admin-Key': adminKey,
-    },
+    headers: buildAdminHeaders(adminKey),
   });
 
   return readJsonResponse<T>(response);

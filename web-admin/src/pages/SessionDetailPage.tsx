@@ -11,7 +11,15 @@ import {
   TopNav,
 } from '../components';
 import { useAdminAuth } from '../auth';
-import { API_BASE_URL, buildAdminMediaUrl, deleteAdminSession, getAdminSessionDetail, getAdminSessionLogs, saveAdminDecision } from '../lib/api';
+import {
+  API_BASE_URL,
+  buildAdminHeaders,
+  buildAdminMediaUrl,
+  deleteAdminSession,
+  getAdminSessionDetail,
+  getAdminSessionLogs,
+  saveAdminDecision,
+} from '../lib/api';
 import { formatDateTime, formatDecisionWithDistance } from '../lib/utils';
 import type { AdminDecision, AuditLogEntry, SessionDetail } from '../types';
 
@@ -358,9 +366,7 @@ function ProtectedMediaPreview({
       try {
         setError('');
         const response = await fetch(url, {
-          headers: {
-            'X-Admin-Key': adminKey,
-          },
+          headers: buildAdminHeaders(adminKey),
         });
 
         if (!response.ok) {
