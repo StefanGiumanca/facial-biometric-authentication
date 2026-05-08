@@ -1,6 +1,7 @@
 # Virtual environment
 venv/
-.vscode/
+.vscode
+
 
 # Python cache
 __pycache__/
@@ -17,6 +18,8 @@ backend/data/private/
 backend/data/outputs/
 backend/data/selfies/
 backend/data/uploads/
+recovery/
+scripts/
 
 # Documentation
 ADMIN_FEATURE_IMPLEMENTATION.md
