@@ -10,6 +10,9 @@ __pycache__/
 .DS_Store
 
 # Sensitive / generated data
+.env
+.env.*
+web-admin/.env
 backend/data/private/
 backend/data/outputs/
 backend/data/selfies/

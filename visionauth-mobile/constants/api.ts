@@ -1,14 +1,16 @@
-export const CONNECTION_MODE: 'wifi' | 'ngrok' = 'ngrok';
+const configuredConnectionMode = process.env.EXPO_PUBLIC_CONNECTION_MODE;
 
-export const WIFI_API_BASE_URL = 'http://172.20.10.13:8000';
-export const NGROK_API_BASE_URL = 'https://reward-botanist-tag.ngrok-free.dev';
+export const CONNECTION_MODE: 'wifi' | 'ngrok' = configuredConnectionMode === 'ngrok' ? 'ngrok' : 'wifi';
+
+export const WIFI_API_BASE_URL = process.env.EXPO_PUBLIC_WIFI_API_BASE_URL?.trim() || 'http://192.168.1.131:8000';
+export const NGROK_API_BASE_URL = process.env.EXPO_PUBLIC_NGROK_API_BASE_URL?.trim() || 'https://reward-botanist-tag.ngrok-free.dev';
 
 export const LOCAL_WEB_ADMIN_URL = 'http://127.0.0.1:5173';
-export const WIFI_WEB_ADMIN_URL = 'http://172.20.10.13:5173';
-export const NGROK_WEB_ADMIN_URL = 'http://172.20.10.13:5173';
+export const WIFI_WEB_ADMIN_URL = process.env.EXPO_PUBLIC_WIFI_WEB_ADMIN_URL?.trim() || 'http://192.168.1.131:5173';
+export const NGROK_WEB_ADMIN_URL = process.env.EXPO_PUBLIC_NGROK_WEB_ADMIN_URL?.trim() || WIFI_WEB_ADMIN_URL;
 
-export const API_BASE_URL = CONNECTION_MODE === 'ngrok' ? NGROK_API_BASE_URL : WIFI_API_BASE_URL;
-export const WEB_ADMIN_URL = CONNECTION_MODE === 'ngrok' ? NGROK_WEB_ADMIN_URL : WIFI_WEB_ADMIN_URL;
+export const API_BASE_URL = CONNECTION_MODE === 'wifi' ? WIFI_API_BASE_URL : NGROK_API_BASE_URL;
+export const WEB_ADMIN_URL = CONNECTION_MODE === 'wifi' ? WIFI_WEB_ADMIN_URL : NGROK_WEB_ADMIN_URL;
 
 export type UploadAsset = {
   uri: string;

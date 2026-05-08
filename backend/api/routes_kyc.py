@@ -11,7 +11,7 @@ from backend.core.vision import load_haar_face_detector, extract_id_face
 from backend.services.document_parser import parse_romanian_id, validate_reviewed_document_fields
 from backend.services.ocr_engine import build_reader, ocr_full_text, ocr_series_text_dynamic
 from backend.services.matching import match_faces
-from backend.services.liveness import analyze_liveness_with_identity_binding
+from backend.services.liveness import analyze_liveness_challenge_video, create_random_liveness_challenge
 from backend.services.db_service import create_session_record, log_audit_event, update_session_record
 from backend.services.security_policy import (
     register_security_failure,
@@ -68,6 +68,9 @@ def start_session():
         "selfie_path": None,
         "liveness_video_path": None,
         "liveness": None,
+        "liveness_challenge": None,
+        "liveness_challenge_passed": False,
+        "liveness_challenge_details": None,
         "document_fields": None,
         "reviewed_document_fields": None,
         "document_review_passed": False,
@@ -391,6 +394,13 @@ async def face_match():
             "error": "Please complete the liveness check first"
         }
 
+    if session.get("liveness_challenge_passed") is not True:
+        log_audit_event(session_id, "VALIDATION_FAILED", "Face match requested before liveness challenge passed")
+        return {
+            "ok": False,
+            "error": "Please complete the liveness challenge first"
+        }
+
     selfie_path = session["selfie_path"]
     id_face_path = session["id_face_path"]
 
@@ -524,6 +534,50 @@ async def face_match():
                 **result
             }
 
+@router.post("/kyc/liveness/challenge")
+def create_liveness_challenge():
+    if current_session_id is None:
+        return {"ok": False, "error": "No active session"}
+
+    session_id = current_session_id
+    session = sessions[session_id]
+
+    ensure_session_not_locked(session_id)
+
+    if not session.get("selfie_path"):
+        log_audit_event(session_id, "VALIDATION_FAILED", "Liveness challenge requested before selfie uploaded")
+        return {
+            "ok": False,
+            "error": "Please take a selfie before the liveness challenge"
+        }
+
+    challenge = create_random_liveness_challenge()
+    session["liveness_challenge"] = challenge
+    session["liveness_challenge_passed"] = False
+    session["liveness_challenge_details"] = None
+    session["liveness"] = None
+
+    update_session_record(
+        session_id,
+        status="LIVENESS_CHALLENGE_CREATED",
+        liveness_passed=None,
+        liveness_challenge_id=challenge["challenge_id"],
+        liveness_challenge_type=challenge["challenge_type"],
+        liveness_challenge_passed=False,
+        liveness_challenge_details=challenge,
+    )
+    log_audit_event(
+        session_id,
+        "LIVENESS_CHALLENGE_CREATED",
+        f"Challenge created: {challenge['challenge_type']} ({challenge['instruction']})"
+    )
+
+    return {
+        "ok": True,
+        **challenge,
+    }
+
+
 @router.post("/kyc/liveness")       # endpoint for liveness detection
 async def liveness(file: UploadFile = File(...)):
 
@@ -544,6 +598,14 @@ async def liveness(file: UploadFile = File(...)):
         return {
             "ok": False,
             "error": "Please take a selfie before the liveness check"
+        }
+
+    challenge = session.get("liveness_challenge")
+    if not challenge:
+        log_audit_event(session_id, "VALIDATION_FAILED", "Liveness attempted without an active challenge")
+        return {
+            "ok": False,
+            "error": "Please request a liveness challenge before recording the video"
         }
 
     contents = await file.read()
@@ -572,23 +634,16 @@ async def liveness(file: UploadFile = File(...)):
             "error": "Error loading selfie. Please retry."
         }
 
-    # Analyze liveness with identity binding
-    result = analyze_liveness_with_identity_binding(
+    # Analyze randomized challenge with identity binding
+    result = analyze_liveness_challenge_video(
         str(video_path),
         selfie_img,
+        challenge,
         face_match_threshold=0.50
     )
 
     if not result.get("ok"):
-        # Liveness failed - log appropriate event and register security failure
-        if not result.get("blink_passed"):
-            log_audit_event(
-                session_id,
-                "LIVENESS_VALIDATION_FAILED",
-                f"Blink detection failed: only {result.get('blink_details', {}).get('blink_count', 0)} blinks detected"
-            )
-            failure_reason = "LIVENESS_BLINK_FAILED"
-        elif not result.get("identity_match_passed"):
+        if not result.get("identity_match_passed"):
             log_audit_event(
                 session_id,
                 "LIVENESS_IDENTITY_MATCH_FAILED",
@@ -596,26 +651,36 @@ async def liveness(file: UploadFile = File(...)):
             )
             failure_reason = "LIVENESS_IDENTITY_MISMATCH"
         else:
-            log_audit_event(session_id, "LIVENESS_VALIDATION_FAILED", result.get("error", "Liveness validation failed"))
-            failure_reason = "LIVENESS_VALIDATION_FAILED"
+            log_audit_event(
+                session_id,
+                "LIVENESS_CHALLENGE_FAILED",
+                f"{challenge.get('challenge_type')} failed: {result.get('error', 'Challenge not completed')}"
+            )
+            failure_reason = f"LIVENESS_CHALLENGE_{challenge.get('challenge_type', 'UNKNOWN')}_FAILED"
 
         # Register security failure
         failure_info = register_security_failure(
             session_id,
             failure_reason,
             {
-                "blink_passed": result.get("blink_passed"),
+                "challenge_id": challenge.get("challenge_id"),
+                "challenge_type": challenge.get("challenge_type"),
+                "challenge_passed": result.get("passed"),
                 "identity_match_passed": result.get("identity_match_passed"),
-                "blink_count": result.get("blink_details", {}).get("blink_count", 0),
                 "identity_match_distance": result.get("identity_match_distance", 0),
+                "details": result.get("details"),
             }
         )
 
         sessions[session_id]["liveness"] = False
+        sessions[session_id]["liveness_challenge_passed"] = False
+        sessions[session_id]["liveness_challenge_details"] = result.get("details")
         update_session_record(
             session_id,
             status="LIVENESS_FAILED",
             liveness_passed=False,
+            liveness_challenge_passed=False,
+            liveness_challenge_details=result.get("details"),
         )
 
         if failure_info.get("session_locked"):
@@ -632,8 +697,13 @@ async def liveness(file: UploadFile = File(...)):
         return {
             "ok": False,
             "error": result.get("error", "Liveness check failed"),
-            "blink_passed": result.get("blink_passed"),
+            "message": result.get("message"),
+            "challenge_id": challenge.get("challenge_id"),
+            "challenge_type": challenge.get("challenge_type"),
+            "instruction": challenge.get("instruction"),
+            "challenge_passed": result.get("passed"),
             "identity_match_passed": result.get("identity_match_passed"),
+            "details": result.get("details"),
             "security_fail_count": failure_info.get("security_fail_count", 0),
             "remaining_attempts": failure_info.get("remaining_attempts", 0),
             "session_locked": failure_info.get("session_locked", False),
@@ -641,17 +711,20 @@ async def liveness(file: UploadFile = File(...)):
 
     # Liveness passed all checks
     sessions[session_id]["liveness"] = True
+    sessions[session_id]["liveness_challenge_passed"] = True
+    sessions[session_id]["liveness_challenge_details"] = result.get("details")
     update_session_record(
         session_id,
         status="LIVENESS_COMPLETED",
         liveness_passed=True,
+        liveness_challenge_passed=True,
+        liveness_challenge_details=result.get("details"),
     )
 
-    # Log both successful checks
     log_audit_event(
         session_id,
-        "LIVENESS_COMPLETED",
-        f"Blink check passed ({result.get('blink_details', {}).get('blink_count', 0)} blinks)"
+        "LIVENESS_CHALLENGE_PASSED",
+        f"{challenge.get('challenge_type')} challenge passed"
     )
     log_audit_event(
         session_id,
@@ -662,10 +735,13 @@ async def liveness(file: UploadFile = File(...)):
     return {
         "ok": True,
         "passed": True,
-        "blink_passed": result.get("blink_passed"),
-        "blink_count": result.get("blink_details", {}).get("blink_count"),
+        "challenge_id": challenge.get("challenge_id"),
+        "challenge_type": challenge.get("challenge_type"),
+        "instruction": challenge.get("instruction"),
+        "challenge_passed": result.get("passed"),
         "identity_match_passed": result.get("identity_match_passed"),
         "identity_match_distance": result.get("identity_match_distance"),
+        "details": result.get("details"),
     }
 
 @router.get("/kyc/session/status")
@@ -686,10 +762,13 @@ def session_status():
         "document_review_passed": session.get("document_review_passed") is True,
         "selfie_uploaded": session["selfie_path"] is not None,
         "liveness_passed": session["liveness"] is True,
+        "liveness_challenge": session.get("liveness_challenge"),
+        "liveness_challenge_passed": session.get("liveness_challenge_passed") is True,
         "ready_for_face_match": (
             session["id_face_path"] is not None
             and session["selfie_path"] is not None
             and session["liveness"] is True
+            and session.get("liveness_challenge_passed") is True
         ),
         "session_data": session
     }

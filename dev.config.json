@@ -1,0 +1,38 @@
+{
+  "database_url": "postgresql+psycopg2://postgres:postgres@localhost:5432/visionauth",
+  "admin_key": "dev-admin-key",
+  "postgres": {
+    "enabled": true,
+    "start_command": ["brew", "services", "start", "postgresql@14"],
+    "host": "localhost",
+    "port": 5432,
+    "database": "visionauth",
+    "maintenance_database": "postgres",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  "backend": {
+    "enabled": true,
+    "command": [
+      "venv/bin/python",
+      "-m",
+      "uvicorn",
+      "backend.api.app:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8000",
+      "--reload"
+    ]
+  },
+  "web_admin": {
+    "enabled": true,
+    "cwd": "web-admin",
+    "command": ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+  },
+  "mobile": {
+    "enabled": true,
+    "cwd": "visionauth-mobile",
+    "command": ["npm", "run", "start", "--", "--clear", "--lan"]
+  }
+}

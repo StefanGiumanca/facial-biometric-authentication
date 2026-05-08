@@ -36,6 +36,10 @@ class KycSession(Base):
     raw_ocr_text: Mapped[str | None] = mapped_column(Text)
 
     liveness_passed: Mapped[bool | None] = mapped_column(Boolean)
+    liveness_challenge_id: Mapped[str | None] = mapped_column(String(64))
+    liveness_challenge_type: Mapped[str | None] = mapped_column(String(64))
+    liveness_challenge_passed: Mapped[bool | None] = mapped_column(Boolean)
+    liveness_challenge_details: Mapped[dict | list | None] = mapped_column(JSON)
     face_match_distance: Mapped[float | None] = mapped_column(Float)
     face_match_decision: Mapped[str | None] = mapped_column(String(64))
     final_decision: Mapped[str | None] = mapped_column(String(64))
