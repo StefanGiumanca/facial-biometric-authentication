@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { getKyc, uploadKycFile, type UploadAsset } from '@/constants/api';
+import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
 
 type DocumentResponse = {
   ok?: boolean;
@@ -212,6 +212,17 @@ export default function DocumentScreen() {
 }
 
 function getDocumentUploadErrorMessage(error: unknown) {
+  const apiError = error as ApiError | undefined;
+  const detail = typeof apiError?.data?.detail === 'object' ? apiError.data.detail : null;
+
+  if (detail?.code === 'INVALID_ROMANIAN_ID_DOCUMENT') {
+    return detail.message || 'This photo does not look like a real Romanian ID card. Please scan the front of your Romanian ID clearly.';
+  }
+
+  if (apiError?.data?.error) {
+    return apiError.data.error;
+  }
+
   const message = error instanceof Error ? error.message : '';
 
   if (message.includes('JSON Parse error') || message.includes('No face detected on ID')) {

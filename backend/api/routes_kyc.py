@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import face_recognition
 from backend.core.vision import load_haar_face_detector, extract_id_face
-from backend.services.document_parser import parse_romanian_id, validate_reviewed_document_fields
+from backend.services.document_parser import parse_romanian_id, validate_reviewed_document_fields, validate_romanian_id_document
 from backend.services.ocr_engine import build_reader, ocr_full_text, ocr_series_text_dynamic
 from backend.services.matching import match_faces
 from backend.services.liveness import analyze_liveness_challenge_video, create_random_liveness_challenge
@@ -27,7 +27,7 @@ from backend.services.security_policy import (
 
 
 router = APIRouter()
-reader = build_reader(gpu=os.getenv("OCR_USE_GPU", "1") == "1")
+reader = build_reader(gpu=os.getenv("OCR_USE_GPU", "1"))
 detector = load_haar_face_detector()
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -121,6 +121,30 @@ async def extract_document(file: UploadFile = File(...)):
     full_text = ocr_full_text(reader, img_bgr)
     series_text = ocr_series_text_dynamic(reader, img_bgr, outputs_dir=OUTPUTS_DIR)
     parsed = parse_romanian_id(full_text, series_text)
+
+    document_validation = validate_romanian_id_document(full_text, series_text, parsed)
+    if not document_validation.get("ok"):
+        update_session_record(
+            session_id,
+            status="DOCUMENT_REJECTED",
+            raw_ocr_text=full_text,
+        )
+        log_audit_event(
+            session_id,
+            "DOCUMENT_VALIDATION_FAILED",
+            f"Uploaded image rejected as non-Romanian ID: {document_validation}"
+        )
+        return {
+            "ok": False,
+            "error": "This photo does not look like a real Romanian ID card. Please scan the front of your Romanian ID clearly.",
+            "detail": {
+                "code": "INVALID_ROMANIAN_ID_DOCUMENT",
+                "message": "This photo does not look like a real Romanian ID card.",
+                "matched_keywords": document_validation.get("matched_keywords", []),
+                "strong_fields": document_validation.get("strong_fields", []),
+            },
+        }
+
     update_session_record(
         session_id,
         status="OCR_COMPLETED",
@@ -634,20 +658,41 @@ async def liveness(file: UploadFile = File(...)):
             "error": "Error loading selfie. Please retry."
         }
 
-    # Analyze randomized challenge with identity binding
-    result = analyze_liveness_challenge_video(
-        str(video_path),
-        selfie_img,
-        challenge,
-        face_match_threshold=0.50
-    )
+    # Analyze randomized challenge with identity binding. Keep failures JSON-shaped
+    # so the mobile app does not show a misleading JSON parse error.
+    try:
+        result = analyze_liveness_challenge_video(
+            str(video_path),
+            selfie_img,
+            challenge,
+            face_match_threshold=0.50
+        )
+    except Exception as error:
+        print(f"[LIVENESS] Analysis crashed: {type(error).__name__}: {error}")
+        result = {
+            "ok": False,
+            "passed": False,
+            "error": "Liveness analysis failed. Please record a shorter, clearer video and try again.",
+            "message": "Liveness analysis failed. Please record a shorter, clearer video and try again.",
+            "challenge_id": challenge.get("challenge_id"),
+            "challenge_type": challenge.get("challenge_type"),
+            "instruction": challenge.get("instruction"),
+            "identity_match_passed": False,
+            "identity_match_distance": None,
+            "details": {
+                "error_type": type(error).__name__,
+                "error": str(error),
+            },
+        }
 
     if not result.get("ok"):
         if not result.get("identity_match_passed"):
+            identity_distance = result.get("identity_match_distance")
+            identity_distance_text = f"{identity_distance:.3f}" if isinstance(identity_distance, (int, float)) else "unknown"
             log_audit_event(
                 session_id,
                 "LIVENESS_IDENTITY_MATCH_FAILED",
-                f"Liveness face does not match selfie (distance: {result.get('identity_match_distance', 0):.3f})"
+                f"Liveness face does not match selfie (distance: {identity_distance_text})"
             )
             failure_reason = "LIVENESS_IDENTITY_MISMATCH"
         else:

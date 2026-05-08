@@ -239,6 +239,65 @@ def parse_romanian_id(full_text: str, series_text: str | None = None) -> dict:
     }
 
 
+def validate_romanian_id_document(full_text: str, series_text: str | None, parsed_fields: dict) -> dict:
+    """Decide whether OCR output looks like a real Romanian identity card.
+
+    A face photo can pass face-crop extraction, so this guard requires document
+    text evidence before the flow may continue to review. The checks are
+    intentionally conservative: at least one strong identity signal plus enough
+    Romanian ID keywords must be present.
+    """
+    normalized_full_text = normalize_ocr_text(full_text).upper()
+    normalized_series_text = normalize_ocr_text(series_text or "").upper()
+    combined_text = f"{normalized_full_text} {normalized_series_text}"
+
+    keyword_patterns = {
+        "romania": r"\b(ROMANIA|ROU|ROUMANIE|ROUMANIAN)\b",
+        "identity_card": r"\b(CARTE\s+DE\s+IDENTITATE|CARTE|IDENTITATE|IDENTITY|IDROU)\b",
+        "cnp_label": r"\b(CNP|COD\s+NUMERIC\s+PERSONAL)\b",
+        "series_label": r"\b(SERIA|SERIE|NR|NUMAR|NUMBER)\b",
+        "nationality": r"\b(CETATENIE|NATIONALITATE|NATIONALITY|NATIONALITE)\b",
+        "address": r"\b(DOMICILIU|ADRESA|ADRESSE|ADDRESS)\b",
+        "validity": r"\b(VALABILITATE|VALABIL|VALIDITY|VALID)\b",
+    }
+    matched_keywords = [
+        name for name, pattern in keyword_patterns.items()
+        if re.search(pattern, combined_text, flags=re.IGNORECASE)
+    ]
+
+    strong_fields = [
+        field for field in ("cnp", "series_number")
+        if parsed_fields.get(field)
+    ]
+    optional_fields = [
+        field for field in ("first_name", "last_name", "sex", "nationality", "address", "valid_from", "valid_until")
+        if parsed_fields.get(field)
+    ]
+
+    has_mrz = "IDROU" in combined_text
+    has_valid_cnp = bool(parsed_fields.get("cnp"))
+    has_series = bool(parsed_fields.get("series_number"))
+    keyword_score = len(matched_keywords)
+    field_score = len(strong_fields) * 2 + len(optional_fields)
+
+    passed = (
+        (has_valid_cnp and (has_series or keyword_score >= 2))
+        or (has_mrz and keyword_score >= 1 and field_score >= 2)
+        or (has_series and keyword_score >= 3 and field_score >= 3)
+    )
+
+    return {
+        "ok": passed,
+        "matched_keywords": matched_keywords,
+        "strong_fields": strong_fields,
+        "optional_fields": optional_fields,
+        "keyword_score": keyword_score,
+        "field_score": field_score,
+        "has_mrz": has_mrz,
+        "message": None if passed else "The uploaded image does not look like a Romanian ID card.",
+    }
+
+
 def validate_reviewed_document_fields(ocr_fields: dict, reviewed_fields: dict) -> dict:
     """Validate user-reviewed document fields against OCR-extracted data.
 

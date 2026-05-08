@@ -26,6 +26,7 @@ export type ApiResponse = {
     reason?: string;
     message?: string;
     security_fail_count?: number;
+    [key: string]: unknown;
   };
   [key: string]: unknown;
 };
@@ -131,7 +132,28 @@ export type AdminSessionLogsResponse = {
 };
 
 async function readJsonResponse(response: Response): Promise<ApiResponse> {
-  const data = (await response.json()) as ApiResponse;
+  const rawText = await response.text();
+  let data: ApiResponse;
+
+  try {
+    data = rawText ? (JSON.parse(rawText) as ApiResponse) : {};
+  } catch {
+    const preview = rawText.trim().slice(0, 180);
+    const error = new Error(
+      preview
+        ? `Server returned a non-JSON response (${response.status}): ${preview}`
+        : `Server returned an empty response (${response.status})`,
+    ) as ApiError;
+    error.data = {
+      ok: false,
+      error: error.message,
+      detail: {
+        code: 'NON_JSON_RESPONSE',
+        message: error.message,
+      },
+    };
+    throw error;
+  }
 
   if (!response.ok || data.ok === false) {
     const detailMessage = typeof data.detail === 'object' ? data.detail?.message : data.detail;

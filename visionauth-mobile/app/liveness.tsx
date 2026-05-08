@@ -186,6 +186,7 @@ export default function LivenessScreen() {
           <Text style={styles.instruction}>Keep the phone steady.</Text>
           <Text style={styles.instruction}>Use good lighting.</Text>
           <Text style={styles.instruction}>Keep only your face in frame.</Text>
+          <Text style={styles.instruction}>Start neutral for one second, then perform the action.</Text>
           <Text style={styles.instruction}>Make the requested action clear for at least a few seconds.</Text>
         </View>
 

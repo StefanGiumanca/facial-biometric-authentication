@@ -2,6 +2,7 @@ from pathlib import Path
 import cv2
 import easyocr
 import re
+import os
 
 def crop_series_roi(img_bgr):
     h, w = img_bgr.shape[:2]
@@ -75,9 +76,50 @@ def ocr_roi_text(reader, roi_bgr, label: str, outputs_dir: Path):
 
 
 
-def build_reader(gpu: bool = False):
-    """Create and return an EasyOCR Reader instance."""
-    return easyocr.Reader(["en"], gpu=gpu)
+def _torch_acceleration_status() -> dict[str, bool]:
+    try:
+        import torch
+    except Exception:
+        return {"cuda": False, "mps": False}
+
+    return {
+        "cuda": bool(torch.cuda.is_available()),
+        "mps": bool(hasattr(torch.backends, "mps") and torch.backends.mps.is_available()),
+    }
+
+
+def should_use_easyocr_gpu(mode: str | bool | None = None) -> bool:
+    """Return True only for accelerators EasyOCR can reliably use.
+
+    EasyOCR's stable GPU path is CUDA. Apple MPS can accelerate some PyTorch
+    models, but EasyOCR does not consistently run its full detection/recognition
+    stack on MPS, so we do not force it here. This keeps local Mac and Docker
+    runs from crashing while still using CUDA automatically on supported hosts.
+    """
+    if isinstance(mode, bool):
+        return mode
+
+    normalized = (mode or os.getenv("OCR_USE_GPU", "auto")).strip().lower()
+    if normalized in {"0", "false", "no", "cpu"}:
+        return False
+    if normalized in {"1", "true", "yes", "cuda", "gpu"}:
+        return True
+
+    status = _torch_acceleration_status()
+    if status["cuda"]:
+        print("[OCR] CUDA detected; EasyOCR GPU mode enabled.")
+        return True
+    if status["mps"]:
+        print("[OCR] Apple MPS detected, but EasyOCR GPU mode is CUDA-oriented; using CPU for stability.")
+
+    return False
+
+
+def build_reader(gpu: bool | str | None = None):
+    """Create and return an EasyOCR Reader with safe accelerator detection."""
+    use_gpu = should_use_easyocr_gpu(gpu)
+    print(f"[OCR] EasyOCR gpu={use_gpu}")
+    return easyocr.Reader(["en"], gpu=use_gpu)
 
 
 def ocr_full_text(reader, img_bgr) -> str:

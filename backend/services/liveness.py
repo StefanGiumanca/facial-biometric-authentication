@@ -17,6 +17,8 @@ BASELINE_FACE_FRAMES = 6
 MIN_FACE_CHALLENGE_HIT_FRAMES = 12
 MIN_HAND_CHALLENGE_HIT_FRAMES = 10
 MIN_ANALYZED_FACE_FRAMES = 18
+MIN_VIDEO_FRAMES = 36
+MIN_FACE_COVERAGE_RATIO = 0.50
 MAX_VIDEO_FRAMES = 220
 FRAME_SAMPLE_STEP = 2
 ANALYSIS_FRAME_WIDTH = 480
@@ -64,6 +66,9 @@ FACE_REQUIRED_CHALLENGES = {
     "SHAKE_HEAD_NO",
     "MOVE_CLOSER",
     "MOVE_BACK",
+    "RAISE_HAND",
+    "SHOW_OPEN_PALM",
+    "SHOW_TWO_FINGERS",
     "TOUCH_NOSE",
 }
 HAND_REQUIRED_CHALLENGES = {
@@ -382,6 +387,7 @@ def _analyze_challenge_frames(frames: list[np.ndarray], challenge: dict[str, Any
     challenge_type = challenge.get("challenge_type")
     needs_face = challenge_type in FACE_REQUIRED_CHALLENGES
     needs_hand = challenge_type in HAND_REQUIRED_CHALLENGES
+    sampled_frame_count = len(frames[::FRAME_SAMPLE_STEP])
 
     face_frames = 0
     hand_frames = 0
@@ -406,7 +412,8 @@ def _analyze_challenge_frames(frames: list[np.ndarray], challenge: dict[str, Any
     hands = None
     if needs_hand:
         try:
-            os.environ.setdefault("MEDIAPIPE_DISABLE_GPU", "1")
+            if os.getenv("LIVENESS_USE_MEDIAPIPE_GPU", "0") != "1":
+                os.environ.setdefault("MEDIAPIPE_DISABLE_GPU", "1")
             import mediapipe as mp
 
             mp_hands = mp.solutions.hands
@@ -416,12 +423,15 @@ def _analyze_challenge_frames(frames: list[np.ndarray], challenge: dict[str, Any
                 min_detection_confidence=0.55,
                 min_tracking_confidence=0.50,
             )
-        except RuntimeError as error:
+        except Exception as error:
             return _summarize_result(
                 challenge=challenge,
                 passed=False,
                 message="Hand gesture detection is not available on this machine. Please try a face challenge.",
-                details={"mediapipe_error": str(error)},
+                details={
+                    "mediapipe_error": str(error),
+                    "mediapipe_error_type": type(error).__name__,
+                },
             )
 
     try:
@@ -565,12 +575,18 @@ def _analyze_challenge_frames(frames: list[np.ndarray], challenge: dict[str, Any
             details={"multiple_face_frame": multiple_face_frame},
         )
 
-    if needs_face and face_frames < MIN_ANALYZED_FACE_FRAMES:
+    min_required_face_frames = max(MIN_ANALYZED_FACE_FRAMES, int(sampled_frame_count * MIN_FACE_COVERAGE_RATIO))
+    if needs_face and face_frames < min_required_face_frames:
         return _summarize_result(
             challenge=challenge,
             passed=False,
-            message="No clear face was detected. Please keep your face centered and well lit.",
-            details={"face_frames": face_frames, "required_face_frames": MIN_ANALYZED_FACE_FRAMES},
+            message="Your face was not visible clearly enough. Keep your face centered for the whole video.",
+            details={
+                "face_frames": face_frames,
+                "sampled_frames": sampled_frame_count,
+                "required_face_frames": min_required_face_frames,
+                "required_face_coverage_ratio": MIN_FACE_COVERAGE_RATIO,
+            },
         )
 
     if needs_hand and hand_frames < MIN_HAND_CHALLENGE_HIT_FRAMES:
@@ -602,6 +618,8 @@ def _analyze_challenge_frames(frames: list[np.ndarray], challenge: dict[str, Any
     details = {
         "face_frames": face_frames,
         "hand_frames": hand_frames,
+        "sampled_frames": sampled_frame_count,
+        "face_coverage_ratio": round(face_frames / max(sampled_frame_count, 1), 3),
         "baseline_frames": len(baseline_face_metrics),
         "baseline": baseline_details,
         "consecutive_hit_frames": consecutive_hits,
@@ -741,6 +759,21 @@ def analyze_liveness_challenge_video(video_path, selfie_img_bgr, challenge: dict
             "challenge_type": challenge.get("challenge_type"),
             "identity_match_passed": None,
             "details": {"frames_extracted": 0},
+        }
+
+    if len(frames) < MIN_VIDEO_FRAMES:
+        return {
+            "ok": False,
+            "passed": False,
+            "error": "The liveness video is too short. Please record a longer video and complete the challenge clearly.",
+            "challenge_id": challenge.get("challenge_id"),
+            "challenge_type": challenge.get("challenge_type"),
+            "instruction": challenge.get("instruction"),
+            "identity_match_passed": None,
+            "details": {
+                "frames_extracted": len(frames),
+                "required_frames": MIN_VIDEO_FRAMES,
+            },
         }
 
     challenge_result = _analyze_challenge_frames(frames, challenge)

@@ -5,6 +5,8 @@ services:
       POSTGRES_DB: visionauth
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -14,16 +16,22 @@ services:
       retries: 10
 
   backend:
+    profiles: ["docker-backend"]
     build:
       context: .
       dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/visionauth
       ADMIN_KEY: dev-admin-key
-      OCR_USE_GPU: "0"
+      OCR_USE_GPU: "1"
+      OMP_NUM_THREADS: ${VISIONAUTH_THREADS:-4}
+      OPENBLAS_NUM_THREADS: ${VISIONAUTH_THREADS:-4}
+      MKL_NUM_THREADS: ${VISIONAUTH_THREADS:-4}
+      NUMEXPR_NUM_THREADS: ${VISIONAUTH_THREADS:-4}
       MPLCONFIGDIR: /tmp/matplotlib
       XDG_CACHE_HOME: /tmp/.cache
-      MEDIAPIPE_DISABLE_GPU: "1"
+      MEDIAPIPE_DISABLE_GPU: ${MEDIAPIPE_DISABLE_GPU:-1}
+      LIVENESS_USE_MEDIAPIPE_GPU: ${LIVENESS_USE_MEDIAPIPE_GPU:-0}
     ports:
       - "8000:8000"
     volumes:
@@ -46,7 +54,9 @@ services:
       - ./web-admin:/app
       - web_admin_node_modules:/app/node_modules
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+        required: false
 
   mobile:
     build:
@@ -70,8 +80,11 @@ services:
       - ./visionauth-mobile:/app
       - mobile_node_modules:/app/node_modules
     depends_on:
-      - backend
-      - web-admin
+      backend:
+        condition: service_started
+        required: false
+      web-admin:
+        condition: service_started
     stdin_open: true
     tty: true
     command: sh -c "npm run start -- --clear --${EXPO_MODE:-lan}"
