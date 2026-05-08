@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { BrandHeader, MetricCard, SectionCard, Shell, StatusBadge, TopNav } from '../components';
 import { useAdminAuth } from '../auth';
@@ -86,7 +87,19 @@ export function SessionsPage() {
     const rejected = sessions.filter((session) => matchesFilter(session, 'REJECTED')).length;
     const review = sessions.filter((session) => matchesFilter(session, 'MANUAL_REVIEW')).length;
     const inProgress = sessions.filter((session) => matchesFilter(session, 'IN_PROGRESS')).length;
-    return { verified, rejected, review, inProgress };
+    const flagged = sessions.filter((session) => session.security_fail_count > 0 || session.liveness_passed === false).length;
+    const scoredSessions = sessions
+      .map((session) => getFaceMatchDistance(session))
+      .filter((distance): distance is number => typeof distance === 'number');
+    const averageConfidence =
+      scoredSessions.length === 0
+        ? null
+        : Math.round(
+            scoredSessions.reduce((total, distance) => total + Math.max(0, Math.min(1, 1 - distance / 0.6)), 0) /
+              scoredSessions.length *
+              100,
+          );
+    return { verified, rejected, review, inProgress, flagged, averageConfidence, total: sessions.length };
   }, [sessions]);
 
   return (
@@ -107,11 +120,50 @@ export function SessionsPage() {
       />
 
       <div className="metric-grid metric-grid--five">
-        <MetricCard label="Total sessions" value={String(sessions.length)} helper="Latest 50 records from /admin/sessions" />
-        <MetricCard label="Verified" value={String(metrics.verified)} helper="Accepted or approved outcomes" />
-        <MetricCard label="Rejected" value={String(metrics.rejected)} helper="Failed or security-locked sessions" />
-        <MetricCard label="Manual review" value={String(metrics.review)} helper="Manual decision required" />
-        <MetricCard label="In progress" value={String(metrics.inProgress)} helper="Capture, OCR, or liveness still pending" />
+        <MetricCard label="Total sessions" value={String(sessions.length)} helper="Latest 50 records from /admin/sessions" tone="neutral" progress={100} />
+        <MetricCard label="Verified" value={String(metrics.verified)} helper="Accepted or approved outcomes" tone="success" progress={asPercent(metrics.verified, metrics.total)} />
+        <MetricCard label="Rejected" value={String(metrics.rejected)} helper="Failed or security-locked sessions" tone="danger" progress={asPercent(metrics.rejected, metrics.total)} />
+        <MetricCard label="Manual review" value={String(metrics.review)} helper="Manual decision required" tone="warning" progress={asPercent(metrics.review, metrics.total)} />
+        <MetricCard label="In progress" value={String(metrics.inProgress)} helper="Capture, OCR, or liveness still pending" tone="info" progress={asPercent(metrics.inProgress, metrics.total)} />
+      </div>
+
+      <motion.div
+        className="command-panel"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42, delay: 0.08 }}>
+        <div>
+          <span className="command-panel__label">Queue intelligence</span>
+          <strong>{visibleSessions.length} visible cases</strong>
+          <p>Live filtering, biometric status, and manual review triage for the latest verification sessions.</p>
+        </div>
+        <div className="decision-mix">
+          <DecisionBar label="Verified" tone="success" value={metrics.verified} total={metrics.total} />
+          <DecisionBar label="Rejected" tone="danger" value={metrics.rejected} total={metrics.total} />
+          <DecisionBar label="Review" tone="warning" value={metrics.review} total={metrics.total} />
+          <DecisionBar label="Progress" tone="info" value={metrics.inProgress} total={metrics.total} />
+        </div>
+      </motion.div>
+
+      <div className="insight-grid">
+        <InsightCard
+          label="Review focus"
+          value={getReviewFocus(metrics)}
+          helper="Derived from rejected, review, and in-progress queues"
+          tone={metrics.review + metrics.rejected > 0 ? 'warning' : 'success'}
+        />
+        <InsightCard
+          label="Average confidence"
+          value={metrics.averageConfidence === null ? 'Pending' : `${metrics.averageConfidence}%`}
+          helper="Approximate confidence from stored face-match distances"
+          tone={metrics.averageConfidence !== null && metrics.averageConfidence >= 70 ? 'success' : 'info'}
+        />
+        <InsightCard
+          label="Security watch"
+          value={`${metrics.flagged} flagged`}
+          helper="Sessions with security failures or failed liveness"
+          tone={metrics.flagged > 0 ? 'danger' : 'success'}
+        />
       </div>
 
       <SectionCard title="Sessions" hint="Filter the queue and drill into a single review case.">
@@ -173,6 +225,7 @@ export function SessionsPage() {
                   <th>Name</th>
                   <th>Session</th>
                   <th>Decision</th>
+                  <th>Priority</th>
                   <th>Liveness</th>
                   <th>Face Match</th>
                   <th>Updated</th>
@@ -180,8 +233,15 @@ export function SessionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleSessions.map((session) => (
-                  <tr key={session.session_id}>
+                <AnimatePresence initial={false}>
+                {visibleSessions.map((session, index) => (
+                  <motion.tr
+                    key={session.session_id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -18 }}
+                    transition={{ duration: 0.22, delay: Math.min(index * 0.015, 0.16) }}>
                     <td>
                       <div className="table-primary">{getDisplayName(session.first_name, session.last_name)}</div>
                       <div className="table-secondary">{session.cnp || 'No CNP extracted'}</div>
@@ -195,6 +255,9 @@ export function SessionsPage() {
                         <StatusBadge label={normalizeDecision(session)} />
                         <span className="table-secondary">Status: {session.status}</span>
                       </div>
+                    </td>
+                    <td>
+                      <PriorityPill session={session} />
                     </td>
                     <td>
                       <span className={session.liveness_passed ? 'text-success' : session.liveness_passed === false ? 'text-danger' : 'text-muted'}>
@@ -213,13 +276,129 @@ export function SessionsPage() {
                         Inspect
                       </Link>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
+                </AnimatePresence>
               </tbody>
             </table>
           </div>
         ) : null}
       </SectionCard>
     </Shell>
+  );
+}
+
+function getReviewFocus(metrics: {
+  rejected: number;
+  review: number;
+  inProgress: number;
+  total: number;
+}) {
+  if (metrics.rejected > 0) {
+    return 'Rejected cases';
+  }
+
+  if (metrics.review > 0) {
+    return 'Manual review';
+  }
+
+  if (metrics.inProgress > 0) {
+    return 'In progress';
+  }
+
+  if (metrics.total === 0) {
+    return 'No sessions';
+  }
+
+  return 'Healthy queue';
+}
+
+function InsightCard({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  tone: 'success' | 'danger' | 'warning' | 'info';
+}) {
+  return (
+    <motion.article
+      className={`insight-card insight-card--${tone}`}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.3 }}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{helper}</p>
+    </motion.article>
+  );
+}
+
+function PriorityPill({ session }: { session: AdminSession }) {
+  const priority = getReviewPriority(session);
+  return (
+    <span className={`priority-pill priority-pill--${priority.tone}`}>
+      <span className="priority-pill__pulse" />
+      {priority.label}
+    </span>
+  );
+}
+
+function getReviewPriority(session: AdminSession) {
+  const decision = normalizeDecision(session);
+
+  if (session.security_fail_count > 0 || session.liveness_passed === false || decision === 'REJECTED') {
+    return { label: 'High risk', tone: 'danger' };
+  }
+
+  if (decision === 'MANUAL_REVIEW') {
+    return { label: 'Review', tone: 'warning' };
+  }
+
+  if (!session.liveness_passed || !getFaceMatchDistance(session)) {
+    return { label: 'Pending', tone: 'info' };
+  }
+
+  return { label: 'Normal', tone: 'success' };
+}
+
+function asPercent(value: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.round((value / total) * 100);
+}
+
+function DecisionBar({
+  label,
+  tone,
+  value,
+  total,
+}: {
+  label: string;
+  tone: 'success' | 'danger' | 'warning' | 'info';
+  value: number;
+  total: number;
+}) {
+  const percent = asPercent(value, total);
+
+  return (
+    <div className="decision-mix__row">
+      <span>{label}</span>
+      <div className="decision-mix__track" aria-hidden="true">
+        <motion.span
+          className={`decision-mix__fill decision-mix__fill--${tone}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${percent}%` }}
+          transition={{ duration: 0.62, ease: 'easeOut' }}
+        />
+      </div>
+      <strong>{percent}%</strong>
+    </div>
   );
 }

@@ -1,13 +1,28 @@
 import type { ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { formatDateTime, getStatusTone } from './lib/utils';
+
+const cardMotion = {
+  initial: { opacity: 0, y: 18, scale: 0.985 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: { duration: 0.42, ease: 'easeOut' },
+} as const;
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <div className="shell__backdrop shell__backdrop--one" />
       <div className="shell__backdrop shell__backdrop--two" />
-      <div className="shell__content">{children}</div>
+      <div className="shell__grid" />
+      <div className="shell__scanline" />
+      <motion.div
+        className="shell__content"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.35 }}>
+        {children}
+      </motion.div>
     </div>
   );
 }
@@ -22,14 +37,18 @@ export function BrandHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="page-header">
+    <motion.header
+      className="page-header"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: 'easeOut' }}>
       <div>
         <p className="eyebrow">VisionAuth eKYC Admin</p>
         <h1>{title}</h1>
         <p className="page-header__subtitle">{subtitle}</p>
       </div>
       {action}
-    </header>
+    </motion.header>
   );
 }
 
@@ -42,17 +61,28 @@ export function MetricCard({
   label,
   value,
   helper,
+  tone = 'info',
+  progress,
 }: {
   label: string;
   value: string;
   helper?: string;
+  tone?: 'info' | 'success' | 'danger' | 'warning' | 'neutral';
+  progress?: number;
 }) {
+  const safeProgress = typeof progress === 'number' ? Math.max(0, Math.min(progress, 100)) : null;
+
   return (
-    <div className="metric-card">
+    <motion.article className={`metric-card metric-card--${tone}`} whileHover={{ y: -4 }} {...cardMotion}>
       <span className="metric-card__label">{label}</span>
       <strong className="metric-card__value">{value}</strong>
+      {safeProgress !== null ? (
+        <div className="metric-card__meter" aria-hidden="true">
+          <span style={{ width: `${safeProgress}%` }} />
+        </div>
+      ) : null}
       {helper ? <span className="metric-card__helper">{helper}</span> : null}
-    </div>
+    </motion.article>
   );
 }
 
@@ -66,7 +96,7 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="section-card">
+    <motion.section className="section-card" {...cardMotion}>
       <div className="section-card__header">
         <div>
           <h2>{title}</h2>
@@ -74,7 +104,7 @@ export function SectionCard({
         </div>
       </div>
       {children}
-    </section>
+    </motion.section>
   );
 }
 
@@ -107,9 +137,18 @@ export function Timeline({
   }
 
   return (
-    <div className="timeline">
-      {items.map((item) => (
-        <article key={item.id} className="timeline__item">
+    <motion.div className="timeline" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.055 } } }}>
+      <AnimatePresence initial={false}>
+        {items.map((item) => (
+        <motion.article
+          key={item.id}
+          className="timeline__item"
+          variants={{
+            hidden: { opacity: 0, x: -12 },
+            show: { opacity: 1, x: 0 },
+          }}
+          exit={{ opacity: 0, x: -12 }}
+          transition={{ duration: 0.26 }}>
           <div className="timeline__dot" />
           <div className="timeline__content">
             <div className="timeline__meta">
@@ -118,22 +157,33 @@ export function Timeline({
             </div>
             <p>{item.message}</p>
           </div>
-        </article>
-      ))}
-    </div>
+        </motion.article>
+        ))}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
 export function TopNav({ onSignOut }: { onSignOut: () => void }) {
   return (
-    <nav className="top-nav">
+    <motion.nav
+      className="top-nav"
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.34 }}>
       <Link to="/" className="top-nav__brand">
         <span className="top-nav__brand-mark">VA</span>
         <span>VisionAuth Admin</span>
       </Link>
-      <button type="button" className="button button--ghost" onClick={onSignOut}>
-        Clear Admin Key
-      </button>
-    </nav>
+      <div className="top-nav__actions">
+        <span className="top-nav__live">
+          <span className="top-nav__live-dot" />
+          Live review console
+        </span>
+        <button type="button" className="button button--ghost" onClick={onSignOut}>
+          Clear Admin Key
+        </button>
+      </div>
+    </motion.nav>
   );
 }

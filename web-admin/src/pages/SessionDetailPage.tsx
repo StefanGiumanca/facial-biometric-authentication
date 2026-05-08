@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   BrandHeader,
@@ -161,6 +162,19 @@ export function SessionDetailPage() {
             />
           </div>
 
+          <motion.div
+            className="evidence-strip"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.42, ease: 'easeOut' }}>
+            <EvidencePill label="Identity" value={session.first_name || session.last_name ? 'Captured' : 'Incomplete'} tone={session.first_name || session.last_name ? 'success' : 'warning'} />
+            <EvidencePill label="Document face" value={session.id_face_path ? 'Available' : 'Missing'} tone={session.id_face_path ? 'success' : 'danger'} />
+            <EvidencePill label="Selfie" value={session.selfie_path ? 'Available' : 'Missing'} tone={session.selfie_path ? 'success' : 'danger'} />
+            <EvidencePill label="Match score" value={formatMatchScore(session)} tone={getMatchScorePercent(session) >= 70 ? 'success' : getMatchScorePercent(session) > 0 ? 'warning' : 'info'} />
+          </motion.div>
+
+          <VerificationPipeline session={session} />
+
           <div className="detail-layout">
             <div className="detail-layout__main">
               <SectionCard title="Identity Data" hint="Identity values captured from OCR and operator review.">
@@ -215,7 +229,7 @@ export function SessionDetailPage() {
 
               <SectionCard title="Visual Comparison" hint="Protected previews from FastAPI admin endpoints.">
                 <div className="media-grid">
-                  <div className="media-card">
+                  <motion.div className="media-card" whileHover={{ y: -4, scale: 1.01 }} transition={{ duration: 0.18 }}>
                     <div className="media-card__title">ID Face Image</div>
                     {session.id_face_path ? (
                       <ProtectedMediaPreview
@@ -227,9 +241,9 @@ export function SessionDetailPage() {
                       <div className="media-fallback">No ID face image available.</div>
                     )}
                     <code>{session.id_face_path || EMPTY_VALUE}</code>
-                  </div>
+                  </motion.div>
 
-                  <div className="media-card">
+                  <motion.div className="media-card" whileHover={{ y: -4, scale: 1.01 }} transition={{ duration: 0.18 }}>
                     <div className="media-card__title">Selfie Image</div>
                     {session.selfie_path ? (
                       <ProtectedMediaPreview
@@ -241,17 +255,25 @@ export function SessionDetailPage() {
                       <div className="media-fallback">No selfie image available.</div>
                     )}
                     <code>{session.selfie_path || EMPTY_VALUE}</code>
-                  </div>
+                  </motion.div>
                 </div>
-                <div className="match-score-panel">
+                <motion.div
+                  className="match-score-panel"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.34 }}>
                   <div>
                     <span className="match-score-panel__label">Face match score</span>
                     <strong>{formatMatchScore(session)}</strong>
                   </div>
                   <div className="match-score-panel__meter" aria-hidden="true">
-                    <span style={{ width: `${getMatchScorePercent(session)}%` }} />
+                    <motion.span
+                      initial={{ width: 0 }}
+                      animate={{ width: `${getMatchScorePercent(session)}%` }}
+                      transition={{ duration: 0.7, ease: 'easeOut' }}
+                    />
                   </div>
-                </div>
+                </motion.div>
                 <p className="note-text">
                   Preview images are served through protected admin routes under <code>{API_BASE_URL}/admin/sessions/:id/media/:kind</code>.
                   Review the biometric evidence before approving or rejecting.
@@ -444,4 +466,113 @@ function formatMatchScore(session: SessionDetail) {
   }
 
   return `${getMatchScorePercent(session)}% confidence (${distance.toFixed(3)} distance)`;
+}
+
+function EvidencePill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'success' | 'danger' | 'warning' | 'info';
+}) {
+  return (
+    <div className={`evidence-pill evidence-pill--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function VerificationPipeline({ session }: { session: SessionDetail }) {
+  const steps = [
+    {
+      label: 'Document',
+      value: session.document_path ? 'Captured' : 'Missing',
+      tone: session.document_path ? 'success' : 'warning',
+    },
+    {
+      label: 'OCR review',
+      value: session.first_name || session.cnp || session.series_number ? 'Data ready' : 'Incomplete',
+      tone: session.first_name || session.cnp || session.series_number ? 'success' : 'warning',
+    },
+    {
+      label: 'Selfie',
+      value: session.selfie_path ? 'Captured' : 'Missing',
+      tone: session.selfie_path ? 'success' : 'warning',
+    },
+    {
+      label: 'Liveness',
+      value: session.liveness_passed ? 'Passed' : session.liveness_passed === false ? 'Failed' : 'Pending',
+      tone: session.liveness_passed ? 'success' : session.liveness_passed === false ? 'danger' : 'info',
+    },
+    {
+      label: 'Face match',
+      value: session.final_face_match_decision || session.face_match_decision || 'Pending',
+      tone: getFaceMatchPipelineTone(session),
+    },
+    {
+      label: 'Decision',
+      value: session.final_decision || 'Manual queue',
+      tone: getDecisionPipelineTone(session.final_decision),
+    },
+  ] as const;
+
+  return (
+    <motion.div
+      className="verification-pipeline"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, ease: 'easeOut' }}>
+      {steps.map((step, index) => (
+        <motion.div
+          key={step.label}
+          className={`verification-pipeline__step verification-pipeline__step--${step.tone}`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.24, delay: index * 0.04 }}>
+          <span className="verification-pipeline__index">{String(index + 1).padStart(2, '0')}</span>
+          <span className="verification-pipeline__label">{step.label}</span>
+          <strong>{step.value}</strong>
+        </motion.div>
+      ))}
+    </motion.div>
+  );
+}
+
+function getFaceMatchPipelineTone(session: SessionDetail) {
+  const decision = String(session.final_face_match_decision || session.face_match_decision || '').toUpperCase();
+
+  if (['ACCEPTED', 'VERIFIED', 'APPROVED', 'PASS', 'PASSED'].includes(decision)) {
+    return 'success';
+  }
+
+  if (['REJECTED', 'FAILED', 'FAIL'].includes(decision)) {
+    return 'danger';
+  }
+
+  if (decision === 'MANUAL_REVIEW') {
+    return 'warning';
+  }
+
+  return 'info';
+}
+
+function getDecisionPipelineTone(decision?: string | null) {
+  const normalized = String(decision || '').toUpperCase();
+
+  if (['ACCEPTED', 'VERIFIED', 'APPROVED'].includes(normalized)) {
+    return 'success';
+  }
+
+  if (normalized === 'REJECTED') {
+    return 'danger';
+  }
+
+  if (normalized === 'MANUAL_REVIEW') {
+    return 'warning';
+  }
+
+  return 'info';
 }
