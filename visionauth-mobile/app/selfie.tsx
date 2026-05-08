@@ -1,10 +1,21 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
+import {
+  ChipRow,
+  InfoCard,
+  PageHeader,
+  PrimaryButton,
+  ScannerFrame,
+  SecondaryButton,
+  StatusChip,
+  StepIndicator,
+  vaColors,
+} from '@/components/visionauth-ui';
 
 type SessionStatus = {
   selfie_uploaded?: boolean;
@@ -94,40 +105,50 @@ export default function SelfieScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 3 of 5</Text>
-        <Text style={styles.title}>Take a selfie</Text>
-        <Text style={styles.subtitle}>
-          Keep your face centered and well lit. The backend checks that a face is present before the
-          liveness step.
-        </Text>
+        <StepIndicator currentStep={3} label="Biometric capture" />
+        <PageHeader
+          title="Take a selfie"
+          subtitle="Keep your face centered and well lit. This selfie will be compared with the ID portrait."
+        />
 
-        {asset ? (
-          <Image source={{ uri: asset.uri }} style={styles.preview} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>No selfie captured</Text>
+        <InfoCard title="Face capture">
+          <ScannerFrame imageUri={asset?.uri} placeholder="No selfie captured" variant="face" />
+          <ChipRow>
+            <StatusChip label="Face required" />
+            <StatusChip label="Compared with ID" tone="green" />
+          </ChipRow>
+        </InfoCard>
+
+        <InfoCard title="Capture guidance" style={styles.guidanceCard}>
+          <View style={styles.guidanceRow}>
+            <Text style={styles.guidanceIndex}>01</Text>
+            <Text style={styles.guidanceText}>Face the camera directly and keep your head centered.</Text>
           </View>
-        )}
+          <View style={styles.guidanceRow}>
+            <Text style={styles.guidanceIndex}>02</Text>
+            <Text style={styles.guidanceText}>Use good lighting without strong backlight.</Text>
+          </View>
+          <View style={styles.guidanceRow}>
+            <Text style={styles.guidanceIndex}>03</Text>
+            <Text style={styles.guidanceText}>Keep only one person visible in the frame.</Text>
+          </View>
+        </InfoCard>
 
-        <Pressable style={styles.secondaryButton} onPress={captureSelfie}>
-          <Text style={styles.secondaryButtonText}>Open camera</Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={uploadSelfie}
-          disabled={isUploading}>
-          <Text style={styles.buttonText}>{isUploading ? 'Uploading...' : 'Upload selfie'}</Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <SecondaryButton label="Open camera" onPress={captureSelfie} />
+          <PrimaryButton label={isUploading ? 'Checking selfie...' : 'Upload selfie'} onPress={uploadSelfie} disabled={isUploading} />
+        </View>
 
         {facesDetected !== null && (
-          <View style={styles.resultPanel}>
+          <InfoCard title="Selfie accepted" style={styles.resultPanel}>
+            <ChipRow>
+              <StatusChip label="Face detected" tone="green" />
+              <StatusChip label={`${facesDetected} face${facesDetected === 1 ? '' : 's'}`} tone={facesDetected === 1 ? 'green' : 'amber'} />
+            </ChipRow>
             <Text style={styles.resultTitle}>Selfie accepted</Text>
             <Text style={styles.resultText}>Faces detected: {facesDetected}</Text>
-            <Pressable style={styles.button} onPress={() => router.push('/liveness')}>
-              <Text style={styles.buttonText}>Continue to liveness</Text>
-            </Pressable>
-          </View>
+            <PrimaryButton label="Continue to liveness" onPress={() => router.push('/liveness')} />
+          </InfoCard>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -167,95 +188,47 @@ function getSelfieErrorMessage(error: unknown) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0B1220',
+    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
     padding: 24,
   },
-  step: {
-    color: '#60A5FA',
+  guidanceCard: {
+    gap: 12,
+    marginTop: 14,
+  },
+  guidanceRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  guidanceIndex: {
+    color: vaColors.blueSoft,
+    fontSize: 12,
+    fontWeight: '900',
+    width: 24,
+  },
+  guidanceText: {
+    color: vaColors.subtle,
+    flex: 1,
     fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
+    lineHeight: 20,
   },
-  title: {
-    color: 'white',
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-  subtitle: {
-    color: '#C7D2FE',
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: 24,
-  },
-  preview: {
-    alignSelf: 'center',
-    aspectRatio: 0.75,
-    borderRadius: 8,
-    marginBottom: 16,
-    width: '80%',
-  },
-  placeholder: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    aspectRatio: 0.75,
-    backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    marginBottom: 16,
-    width: '80%',
-  },
-  placeholderText: {
-    color: '#94A3B8',
-    fontSize: 15,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
-    marginBottom: 12,
-    paddingVertical: 14,
-  },
-  secondaryButtonText: {
-    color: '#E5E7EB',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  button: {
-    alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 16,
-  },
-  buttonPressed: {
-    opacity: 0.82,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+  actions: {
+    gap: 12,
+    marginTop: 14,
   },
   resultPanel: {
-    backgroundColor: '#111827',
-    borderColor: '#1D4ED8',
-    borderRadius: 8,
-    borderWidth: 1,
     gap: 10,
     marginTop: 20,
-    padding: 16,
   },
   resultTitle: {
-    color: 'white',
+    color: vaColors.text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   resultText: {
-    color: '#CBD5E1',
+    color: vaColors.subtle,
     fontSize: 14,
   },
 });

@@ -1,9 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getKyc, postKycJson, type ApiError, type ApiResponse } from '@/constants/api';
+import {
+  ChipRow,
+  InfoCard,
+  PageHeader,
+  PrimaryButton,
+  StatusChip,
+  StepIndicator,
+  vaColors,
+  type ChipTone,
+} from '@/components/visionauth-ui';
 
 type DocumentResult = {
   [key: string]: unknown;
@@ -49,6 +59,7 @@ const preferredFieldOrder = [
   'valid_from',
   'valid_until',
 ];
+
 const hiddenResponseFields = new Set([
   'ok',
   'filename',
@@ -71,6 +82,12 @@ const fieldLabels: Record<string, string> = {
   valid_until: 'Valid until',
 };
 
+const reviewSections = [
+  { title: 'Personal data', fields: ['first_name', 'last_name', 'cnp', 'sex', 'nationality'] },
+  { title: 'Document data', fields: ['series_number', 'valid_from', 'valid_until'] },
+  { title: 'Address', fields: ['address'] },
+];
+
 const friendlyValidationMessages: Record<string, string> = {
   first_name: 'The name you entered is too different from the one on your ID.',
   last_name: 'The name you entered is too different from the one on your ID.',
@@ -81,23 +98,17 @@ const friendlyValidationMessages: Record<string, string> = {
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{ documentResult?: string | string[] }>();
   const [restoredDocumentResult, setRestoredDocumentResult] = useState<DocumentResult | null>(null);
-  const documentResult = useMemo(
-    () => {
-      const parsedResult = parseDocumentResult(params.documentResult);
-      return Object.keys(parsedResult).length > 0 ? parsedResult : restoredDocumentResult ?? {};
-    },
-    [params.documentResult, restoredDocumentResult]
-  );
+  const documentResult = useMemo(() => {
+    const parsedResult = parseDocumentResult(params.documentResult);
+    return Object.keys(parsedResult).length > 0 ? parsedResult : restoredDocumentResult ?? {};
+  }, [params.documentResult, restoredDocumentResult]);
   const editableFields = useMemo(() => buildEditableFields(documentResult), [documentResult]);
   const initialValues = useMemo(() => buildInitialValues(documentResult, editableFields), [documentResult, editableFields]);
+  const groupedFields = useMemo(() => buildReviewSections(editableFields), [editableFields]);
   const [values, setValues] = useState<EditableValues>(initialValues);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
-
-  useEffect(() => {
-    hydrateReviewProgress();
-  }, []);
 
   useEffect(() => {
     setValues(initialValues);
@@ -105,7 +116,7 @@ export default function ReviewScreen() {
     setFormError(null);
   }, [initialValues]);
 
-  const hydrateReviewProgress = async () => {
+  const hydrateReviewProgress = useCallback(async () => {
     if (params.documentResult) {
       return;
     }
@@ -120,7 +131,11 @@ export default function ReviewScreen() {
     } catch (error) {
       console.log('Review progress restore skipped:', error);
     }
-  };
+  }, [params.documentResult]);
+
+  useEffect(() => {
+    hydrateReviewProgress();
+  }, [hydrateReviewProgress]);
 
   const updateField = (field: string, value: string) => {
     setFieldErrors((currentErrors) => {
@@ -163,44 +178,55 @@ export default function ReviewScreen() {
     }
   };
 
+  const completedCount = editableFields.filter((field) => values[field]?.trim()).length;
+  const attentionCount = Object.keys(fieldErrors).length;
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.step}>Step 2 of 5</Text>
-        <Text style={styles.title}>Review your data</Text>
-        <Text style={styles.subtitle}>
-          This information was extracted automatically from your ID. Correct any value before
-          continuing.
-        </Text>
+        <StepIndicator currentStep={2} label="Identity review" />
+        <PageHeader
+          title="Review your data"
+          subtitle="This information was extracted automatically from your ID. Correct any value before continuing."
+        />
 
-        {formError && <Text style={styles.formError}>{formError}</Text>}
+        {formError ? <Text style={styles.formError}>{formError}</Text> : null}
 
         <View style={styles.form}>
-          {editableFields.map((field) => (
-            <View key={field} style={styles.fieldGroup}>
-              <Text style={styles.label}>{formatFieldLabel(field)}</Text>
-              <TextInput
-                autoCapitalize={field === 'cnp' ? 'none' : 'words'}
-                keyboardType={field === 'cnp' || field === 'number' ? 'number-pad' : 'default'}
-                multiline={field === 'address'}
-                numberOfLines={field === 'address' ? 3 : 1}
-                onChangeText={(value) => updateField(field, value)}
-                placeholder="Not detected"
-                placeholderTextColor="#64748B"
-                style={[styles.input, fieldErrors[field] && styles.inputError, field === 'address' && styles.addressInput]}
-                value={values[field] ?? ''}
-              />
-              {fieldErrors[field] && <Text style={styles.fieldError}>{fieldErrors[field]}</Text>}
-            </View>
+          {groupedFields.map((section) => (
+            <InfoCard key={section.title} title={section.title} style={styles.sectionCard}>
+              {section.fields.map((field, index) => (
+                <View key={field} style={[styles.fieldGroup, index === section.fields.length - 1 && styles.fieldGroupLast]}>
+                  <View style={styles.fieldHeader}>
+                    <Text style={styles.label}>{formatFieldLabel(field)}</Text>
+                    <StatusChip label={getFieldStatusLabel(values[field], fieldErrors[field])} tone={getFieldStatusTone(values[field], fieldErrors[field])} />
+                  </View>
+                  <TextInput
+                    autoCapitalize={field === 'cnp' ? 'none' : 'words'}
+                    keyboardType={field === 'cnp' || field === 'number' ? 'number-pad' : 'default'}
+                    multiline={field === 'address'}
+                    numberOfLines={field === 'address' ? 3 : 1}
+                    onChangeText={(value) => updateField(field, value)}
+                    placeholder="Not detected"
+                    placeholderTextColor="#64748B"
+                    style={[styles.input, fieldErrors[field] && styles.inputError, field === 'address' && styles.addressInput]}
+                    value={values[field] ?? ''}
+                  />
+                  {fieldErrors[field] ? <Text style={styles.fieldError}>{fieldErrors[field]}</Text> : null}
+                </View>
+              ))}
+            </InfoCard>
           ))}
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={confirmReview}
-          disabled={isValidating}>
-          <Text style={styles.buttonText}>{isValidating ? 'Validating...' : 'Confirm and continue'}</Text>
-        </Pressable>
+        <InfoCard title="Review status" style={styles.reviewStatusCard}>
+          <ChipRow>
+            <StatusChip label={`${completedCount}/${editableFields.length} completed`} tone="blue" />
+            <StatusChip label={attentionCount ? `${attentionCount} need review` : 'Ready for validation'} tone={attentionCount ? 'amber' : 'green'} />
+          </ChipRow>
+        </InfoCard>
+
+        <PrimaryButton label={isValidating ? 'Validating identity data...' : 'Confirm and continue'} onPress={confirmReview} disabled={isValidating} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -228,6 +254,23 @@ function buildEditableFields(documentResult: DocumentResult) {
   const extraFields = responseFields.filter((field) => !orderedFields.includes(field));
 
   return [...orderedFields, ...extraFields];
+}
+
+function buildReviewSections(fields: string[]) {
+  const assignedFields = new Set(reviewSections.flatMap((section) => section.fields));
+  const sections = reviewSections
+    .map((section) => ({
+      title: section.title,
+      fields: section.fields.filter((field) => fields.includes(field)),
+    }))
+    .filter((section) => section.fields.length > 0);
+  const extraFields = fields.filter((field) => !assignedFields.has(field));
+
+  if (extraFields.length > 0) {
+    sections.push({ title: 'Additional OCR fields', fields: extraFields });
+  }
+
+  return sections;
 }
 
 function buildInitialValues(documentResult: DocumentResult, fields: string[]) {
@@ -348,41 +391,42 @@ function formatFieldLabel(field: string) {
     .join(' ');
 }
 
+function getFieldStatusLabel(value: string | undefined, error: string | undefined) {
+  if (error) {
+    return 'Review';
+  }
+
+  return value?.trim() ? 'Verified' : 'Missing';
+}
+
+function getFieldStatusTone(value: string | undefined, error: string | undefined): ChipTone {
+  if (error) {
+    return 'amber';
+  }
+
+  return value?.trim() ? 'green' : 'slate';
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0B1220',
+    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
     padding: 24,
   },
-  step: {
-    color: '#60A5FA',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  title: {
-    color: 'white',
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-  subtitle: {
-    color: '#C7D2FE',
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: 24,
-  },
   form: {
-    gap: 16,
-    marginBottom: 24,
+    gap: 14,
+    marginBottom: 14,
+  },
+  sectionCard: {
+    gap: 14,
   },
   formError: {
-    backgroundColor: '#450A0A',
-    borderColor: '#DC2626',
-    borderRadius: 8,
+    backgroundColor: 'rgba(127, 29, 29, 0.28)',
+    borderColor: 'rgba(239, 68, 68, 0.34)',
+    borderRadius: 14,
     borderWidth: 1,
     color: '#FCA5A5',
     fontSize: 14,
@@ -391,25 +435,40 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   fieldGroup: {
-    gap: 8,
+    borderBottomColor: 'rgba(148, 163, 184, 0.10)',
+    borderBottomWidth: 1,
+    gap: 9,
+    paddingBottom: 14,
+  },
+  fieldGroupLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 0,
+  },
+  fieldHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
   },
   label: {
-    color: '#E5E7EB',
-    fontSize: 14,
-    fontWeight: '700',
+    color: vaColors.subtle,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderRadius: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.96)',
+    borderColor: 'rgba(148, 163, 184, 0.20)',
+    borderRadius: 14,
     borderWidth: 1,
-    color: 'white',
+    color: vaColors.text,
     fontSize: 16,
-    paddingHorizontal: 14,
+    fontWeight: '700',
+    paddingHorizontal: 15,
     paddingVertical: 13,
   },
   inputError: {
-    borderColor: '#DC2626',
+    borderColor: vaColors.red,
   },
   fieldError: {
     color: '#FCA5A5',
@@ -420,18 +479,7 @@ const styles = StyleSheet.create({
     minHeight: 88,
     textAlignVertical: 'top',
   },
-  button: {
-    alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 16,
-  },
-  buttonPressed: {
-    opacity: 0.82,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+  reviewStatusCard: {
+    marginBottom: 14,
   },
 });

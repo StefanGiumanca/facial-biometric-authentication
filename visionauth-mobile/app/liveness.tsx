@@ -1,10 +1,21 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router, Stack } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getKyc, postKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
+import {
+  ChipRow,
+  InfoCard,
+  PageHeader,
+  PrimaryButton,
+  RadarVisual,
+  SecondaryButton,
+  StatusChip,
+  StepIndicator,
+  vaColors,
+} from '@/components/visionauth-ui';
 
 type LivenessResponse = {
   ok?: boolean;
@@ -164,64 +175,136 @@ export default function LivenessScreen() {
     }
   };
 
+  const state = useMemo(
+    () => getLivenessVisualState({ assetReady: Boolean(asset), challengeReady: Boolean(challenge), isLoadingChallenge, isUploading, result }),
+    [asset, challenge, isLoadingChallenge, isUploading, result],
+  );
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ headerShown: false, title: '' }} />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 4 of 5</Text>
-        <Text style={styles.title}>Liveness challenge</Text>
-        <Text style={styles.subtitle}>
-          Record a short video with your face visible and complete the randomized action.
-        </Text>
+        <StepIndicator currentStep={4} label="Liveness challenge" />
+        <PageHeader
+          title="Challenge response"
+          subtitle="Record a short video with your face visible and complete the randomized action."
+        />
 
-        <View style={styles.challengeCard}>
-          <Text style={styles.challengeLabel}>Your challenge</Text>
+        <InfoCard style={styles.radarCard}>
+          <RadarVisual active={state.active} passed={result?.passed === true} failed={result?.passed === false} />
+          <Text style={styles.stateLabel}>{state.label}</Text>
+          <Text style={styles.stateText}>{state.text}</Text>
+          <ChipRow>
+            <StatusChip label={challenge?.challenge_type?.replace(/_/g, ' ') || 'Waiting'} tone={challenge ? 'blue' : 'slate'} />
+            <StatusChip label={asset ? 'Video ready' : 'No video'} tone={asset ? 'green' : 'slate'} />
+          </ChipRow>
+        </InfoCard>
+
+        <InfoCard title="Your challenge" style={styles.challengeCard}>
           <Text style={styles.challengeText}>
-            {isLoadingChallenge ? 'Generating challenge...' : challenge?.instruction || 'No challenge loaded'}
+            {isLoadingChallenge ? 'Generating challenge...' : challenge?.instruction || 'Waiting for challenge'}
           </Text>
-          {challenge?.challenge_type && <Text style={styles.challengeType}>{challenge.challenge_type.replace(/_/g, ' ')}</Text>}
+          <Text style={styles.challengeHint}>Start neutral for one second, then perform the requested action clearly.</Text>
+        </InfoCard>
+
+        <InfoCard title="Recording guidance" style={styles.instructions}>
+          <InstructionRow text="Keep the phone steady and use good lighting." />
+          <InstructionRow text="Keep only your face in frame." />
+          <InstructionRow text="Make the requested action clear for at least a few seconds." />
+        </InfoCard>
+
+        <View style={styles.actions}>
+          <SecondaryButton label={asset ? 'Record again' : 'Record liveness video'} onPress={recordVideo} disabled={isLoadingChallenge || !challenge} />
+          <PrimaryButton
+            label={isUploading ? 'Analyzing challenge...' : result?.passed ? 'Continue to result' : 'Upload challenge video'}
+            onPress={result?.passed ? () => router.push('/result') : uploadVideo}
+            disabled={isUploading || isLoadingChallenge || !challenge}
+          />
         </View>
-
-        <View style={styles.instructions}>
-          <Text style={styles.instruction}>Keep the phone steady.</Text>
-          <Text style={styles.instruction}>Use good lighting.</Text>
-          <Text style={styles.instruction}>Keep only your face in frame.</Text>
-          <Text style={styles.instruction}>Start neutral for one second, then perform the action.</Text>
-          <Text style={styles.instruction}>Make the requested action clear for at least a few seconds.</Text>
-        </View>
-
-        {asset && <Text style={styles.videoReady}>Video ready to upload.</Text>}
-
-        <Pressable style={styles.secondaryButton} onPress={recordVideo} disabled={isLoadingChallenge || !challenge}>
-          <Text style={styles.secondaryButtonText}>Record liveness video</Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={result?.passed ? () => router.push('/result') : uploadVideo}
-          disabled={isUploading || isLoadingChallenge || !challenge}>
-          <Text style={styles.buttonText}>
-            {isUploading ? 'Analyzing challenge...' : result?.passed ? 'Continue to result' : 'Upload challenge video'}
-          </Text>
-        </Pressable>
 
         <Pressable style={styles.ghostButton} onPress={requestChallenge} disabled={isUploading || isLoadingChallenge}>
           <Text style={styles.ghostButtonText}>Try a new challenge</Text>
         </Pressable>
 
         {result && !result.passed && (
-          <View style={styles.resultPanel}>
-            <Text style={styles.resultTitle}>Challenge not completed</Text>
+          <InfoCard title="Challenge not completed" style={styles.resultPanel}>
             <Text style={styles.resultText}>{result.message || result.error || 'Please try again.'}</Text>
             <Text style={styles.resultText}>{formatChallengeDetails(result)}</Text>
-            <Pressable style={styles.button} onPress={requestChallenge}>
-              <Text style={styles.buttonText}>Retry with new challenge</Text>
-            </Pressable>
-          </View>
+            <PrimaryButton label="Retry with new challenge" onPress={requestChallenge} />
+          </InfoCard>
         )}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function InstructionRow({ text }: { text: string }) {
+  return (
+    <View style={styles.instructionRow}>
+      <View style={styles.instructionDot} />
+      <Text style={styles.instruction}>{text}</Text>
+    </View>
+  );
+}
+
+function getLivenessVisualState({
+  assetReady,
+  challengeReady,
+  isLoadingChallenge,
+  isUploading,
+  result,
+}: {
+  assetReady: boolean;
+  challengeReady: boolean;
+  isLoadingChallenge: boolean;
+  isUploading: boolean;
+  result: LivenessResponse | null;
+}) {
+  if (isUploading) {
+    return {
+      active: true,
+      label: 'Analyzing challenge',
+      text: 'The backend is checking motion, face visibility, and identity binding.',
+    };
+  }
+
+  if (result?.passed) {
+    return {
+      active: false,
+      label: 'Liveness passed',
+      text: 'Challenge response and selfie binding passed for this session.',
+    };
+  }
+
+  if (result && !result.passed) {
+    return {
+      active: false,
+      label: 'Challenge failed',
+      text: 'Record a clearer attempt with the requested action visible.',
+    };
+  }
+
+  if (isLoadingChallenge || !challengeReady) {
+    return {
+      active: true,
+      label: 'Waiting for challenge',
+      text: 'VisionAuth is preparing a randomized action.',
+    };
+  }
+
+  if (assetReady) {
+    return {
+      active: true,
+      label: 'Ready to analyze',
+      text: 'Upload the recorded video to verify the challenge.',
+    };
+  }
+
+  return {
+    active: false,
+    label: 'Ready to record',
+    text: 'Record the requested action with your face visible.',
+  };
 }
 
 function isSessionLockedError(error: unknown) {
@@ -275,97 +358,68 @@ function formatChallengeDetails(result: LivenessResponse) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0B1220',
+    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
-    justifyContent: 'center',
     padding: 24,
   },
-  step: {
-    color: '#60A5FA',
+  radarCard: {
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  stateLabel: {
+    color: vaColors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  stateText: {
+    color: vaColors.subtle,
     fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
+    lineHeight: 20,
+    marginBottom: 14,
+    textAlign: 'center',
   },
-  title: {
-    color: 'white',
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 12,
+  challengeCard: {
+    gap: 8,
+    marginBottom: 14,
   },
-  subtitle: {
-    color: '#C7D2FE',
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: 24,
+  challengeText: {
+    color: vaColors.text,
+    fontSize: 26,
+    fontWeight: '900',
+    lineHeight: 32,
+  },
+  challengeHint: {
+    color: vaColors.muted,
+    fontSize: 14,
+    lineHeight: 20,
   },
   instructions: {
     gap: 10,
-    marginBottom: 24,
+    marginBottom: 14,
   },
-  challengeCard: {
-    backgroundColor: '#111827',
-    borderColor: '#2563EB',
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 20,
-    padding: 16,
+  instructionRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-  challengeLabel: {
-    color: '#93C5FD',
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  challengeText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: '900',
-    lineHeight: 30,
-  },
-  challengeType: {
-    color: '#CBD5E1',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 8,
+  instructionDot: {
+    backgroundColor: vaColors.blueSoft,
+    borderRadius: 999,
+    height: 8,
+    marginTop: 6,
+    width: 8,
   },
   instruction: {
     color: '#E5E7EB',
+    flex: 1,
     fontSize: 15,
+    lineHeight: 21,
   },
-  videoReady: {
-    color: '#86EFAC',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 14,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
-    marginBottom: 12,
-    paddingVertical: 14,
-  },
-  secondaryButtonText: {
-    color: '#E5E7EB',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  button: {
-    alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 16,
-  },
-  buttonPressed: {
-    opacity: 0.82,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+  actions: {
+    gap: 12,
   },
   ghostButton: {
     alignItems: 'center',
@@ -375,24 +429,16 @@ const styles = StyleSheet.create({
   ghostButtonText: {
     color: '#93C5FD',
     fontSize: 15,
-    fontWeight: '700',
-  },
-  resultPanel: {
-    backgroundColor: '#111827',
-    borderColor: '#991B1B',
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 10,
-    marginTop: 20,
-    padding: 16,
-  },
-  resultTitle: {
-    color: 'white',
-    fontSize: 18,
     fontWeight: '800',
   },
+  resultPanel: {
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+    gap: 10,
+    marginTop: 14,
+  },
   resultText: {
-    color: '#CBD5E1',
+    color: vaColors.subtle,
     fontSize: 14,
+    lineHeight: 20,
   },
 });

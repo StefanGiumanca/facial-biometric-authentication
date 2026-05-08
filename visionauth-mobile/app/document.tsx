@@ -1,10 +1,21 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
+import {
+  ChipRow,
+  InfoCard,
+  PageHeader,
+  PrimaryButton,
+  ScannerFrame,
+  SecondaryButton,
+  StatusChip,
+  StepIndicator,
+  vaColors,
+} from '@/components/visionauth-ui';
 
 type DocumentResponse = {
   ok?: boolean;
@@ -37,11 +48,7 @@ export default function DocumentScreen() {
   const [documentResult, setDocumentResult] = useState<DocumentResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  useEffect(() => {
-    hydrateDocumentProgress();
-  }, []);
-
-  const hydrateDocumentProgress = async () => {
+  const hydrateDocumentProgress = useCallback(async () => {
     try {
       const status = (await getKyc('/kyc/session/status')) as SessionStatus;
       const documentFields = status.session_data?.document_fields;
@@ -57,7 +64,11 @@ export default function DocumentScreen() {
     } catch (error) {
       console.log('Document progress restore skipped:', error);
     }
-  };
+  }, [documentResult]);
+
+  useEffect(() => {
+    hydrateDocumentProgress();
+  }, [hydrateDocumentProgress]);
 
   const requestPermissions = async () => {
     const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
@@ -148,38 +159,49 @@ export default function DocumentScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 1 of 5</Text>
-        <Text style={styles.title}>Scan your ID</Text>
-        <Text style={styles.subtitle}>
-          Capture the front of the Romanian ID card clearly so OCR and face extraction can run.
-        </Text>
+        <StepIndicator currentStep={1} label="Document capture" />
+        <PageHeader
+          title="Scan your ID"
+          subtitle="Capture the front of the Romanian ID card clearly so OCR and face extraction can run."
+        />
 
-        {asset ? (
-          <Image source={{ uri: asset.uri }} style={styles.preview} />
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>No ID photo selected</Text>
+        <InfoCard title="Scan document">
+          <ScannerFrame imageUri={asset?.uri} placeholder="No ID photo selected" />
+          <View style={styles.scanMeta}>
+            <StatusChip label={asset ? 'Image ready' : 'Awaiting image'} tone={asset ? 'green' : 'slate'} />
+            <StatusChip label="Romanian ID" />
           </View>
-        )}
+        </InfoCard>
+
+        <InfoCard title="Capture tips" style={styles.tipsCard}>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipBullet}>01</Text>
+            <Text style={styles.tipText}>Keep all corners visible inside the scanner frame.</Text>
+          </View>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipBullet}>02</Text>
+            <Text style={styles.tipText}>Avoid glare, blur, and strong shadows over the text.</Text>
+          </View>
+          <View style={styles.tipRow}>
+            <Text style={styles.tipBullet}>03</Text>
+            <Text style={styles.tipText}>Use good lighting and keep the document flat.</Text>
+          </View>
+        </InfoCard>
 
         <View style={styles.row}>
-          <Pressable style={styles.secondaryButton} onPress={captureDocument}>
-            <Text style={styles.secondaryButtonText}>Open camera</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryButton} onPress={chooseDocument}>
-            <Text style={styles.secondaryButtonText}>Choose photo</Text>
-          </Pressable>
+          <SecondaryButton label="Open camera" onPress={captureDocument} style={styles.rowButton} />
+          <SecondaryButton label="Choose photo" onPress={chooseDocument} style={styles.rowButton} />
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={uploadDocument}
-          disabled={isUploading}>
-          <Text style={styles.buttonText}>{isUploading ? 'Uploading...' : 'Upload ID card'}</Text>
-        </Pressable>
+        <PrimaryButton label={isUploading ? 'Analyzing document...' : 'Upload ID card'} onPress={uploadDocument} disabled={isUploading} />
 
         {documentResult && (
-          <View style={styles.resultPanel}>
+          <InfoCard title="OCR result" style={styles.resultPanel}>
+            <ChipRow>
+              <StatusChip label="Document uploaded" tone="green" />
+              <StatusChip label="Face crop extracted" tone={documentResult.id_face_path ? 'green' : 'amber'} />
+              <StatusChip label="OCR data detected" tone="blue" />
+            </ChipRow>
             <Text style={styles.resultTitle}>Document accepted</Text>
             <Text style={styles.resultText}>ID face was extracted and OCR data was stored in the session.</Text>
             {visibleDocumentFields.map((field) => {
@@ -194,17 +216,17 @@ export default function DocumentScreen() {
                 </Text>
               );
             })}
-            <Pressable
-              style={styles.button}
+            <PrimaryButton
+              label="Continue to review"
               onPress={() =>
                 router.push({
                   pathname: '/review',
                   params: { documentResult: JSON.stringify(documentResult) },
                 })
-              }>
-              <Text style={styles.buttonText}>Continue to review</Text>
-            </Pressable>
-          </View>
+              }
+              style={styles.continueButton}
+            />
+          </InfoCard>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -235,98 +257,57 @@ function getDocumentUploadErrorMessage(error: unknown) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0B1220',
+    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
     padding: 24,
   },
-  step: {
-    color: '#60A5FA',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  title: {
-    color: 'white',
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-  subtitle: {
-    color: '#C7D2FE',
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: 24,
-  },
-  preview: {
-    width: '100%',
-    aspectRatio: 1.58,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  placeholder: {
-    alignItems: 'center',
-    aspectRatio: 1.58,
-    backgroundColor: '#111827',
-    borderColor: '#334155',
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    marginBottom: 16,
-    width: '100%',
-  },
-  placeholderText: {
-    color: '#94A3B8',
-    fontSize: 15,
+  scanMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
   },
   row: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 12,
+    marginVertical: 14,
   },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#1F2937',
-    borderRadius: 8,
+  rowButton: {
     flex: 1,
-    paddingVertical: 14,
   },
-  secondaryButtonText: {
-    color: '#E5E7EB',
-    fontSize: 15,
-    fontWeight: '700',
+  tipsCard: {
+    gap: 12,
+    marginTop: 14,
   },
-  button: {
-    alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingVertical: 16,
+  tipRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-  buttonPressed: {
-    opacity: 0.82,
+  tipBullet: {
+    color: vaColors.blueSoft,
+    fontSize: 12,
+    fontWeight: '900',
+    width: 24,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
+  tipText: {
+    color: vaColors.subtle,
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
   resultPanel: {
-    backgroundColor: '#111827',
-    borderColor: '#1D4ED8',
-    borderRadius: 8,
-    borderWidth: 1,
     gap: 10,
     marginTop: 20,
-    padding: 16,
   },
   resultTitle: {
-    color: 'white',
+    color: vaColors.text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   resultText: {
-    color: '#CBD5E1',
+    color: vaColors.subtle,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -334,5 +315,8 @@ const styles = StyleSheet.create({
     color: '#E5E7EB',
     fontSize: 14,
     textTransform: 'capitalize',
+  },
+  continueButton: {
+    marginTop: 4,
   },
 });

@@ -243,6 +243,15 @@ export function SessionDetailPage() {
                     <code>{session.selfie_path || EMPTY_VALUE}</code>
                   </div>
                 </div>
+                <div className="match-score-panel">
+                  <div>
+                    <span className="match-score-panel__label">Face match score</span>
+                    <strong>{formatMatchScore(session)}</strong>
+                  </div>
+                  <div className="match-score-panel__meter" aria-hidden="true">
+                    <span style={{ width: `${getMatchScorePercent(session)}%` }} />
+                  </div>
+                </div>
                 <p className="note-text">
                   Preview images are served through protected admin routes under <code>{API_BASE_URL}/admin/sessions/:id/media/:kind</code>.
                   Review the biometric evidence before approving or rejecting.
@@ -405,4 +414,34 @@ function ProtectedMediaPreview({
   }
 
   return <img src={src} alt={alt} className="media-preview" />;
+}
+
+function getSessionFaceDistance(session: SessionDetail) {
+  if (typeof session.final_face_match_distance === 'number') {
+    return session.final_face_match_distance;
+  }
+
+  if (typeof session.face_match_distance === 'number') {
+    return session.face_match_distance;
+  }
+
+  return null;
+}
+
+function getMatchScorePercent(session: SessionDetail) {
+  const distance = getSessionFaceDistance(session);
+  if (distance === null) {
+    return 0;
+  }
+
+  return Math.round(Math.max(0, Math.min(1, 1 - distance / 0.6)) * 100);
+}
+
+function formatMatchScore(session: SessionDetail) {
+  const distance = getSessionFaceDistance(session);
+  if (distance === null) {
+    return 'No score yet';
+  }
+
+  return `${getMatchScorePercent(session)}% confidence (${distance.toFixed(3)} distance)`;
 }

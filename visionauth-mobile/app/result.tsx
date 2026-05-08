@@ -1,9 +1,20 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { API_BASE_URL, getKyc } from '@/constants/api';
+import {
+  ChipRow,
+  ConfidenceMeter,
+  InfoCard,
+  PageHeader,
+  PrimaryButton,
+  StatusChip,
+  StepIndicator,
+  vaColors,
+  type ChipTone,
+} from '@/components/visionauth-ui';
 
 type SessionStatus = {
   ok?: boolean;
@@ -93,18 +104,21 @@ export default function ResultScreen() {
   const ticket = getTicketState({ decision, error, isLoading, matchResult, status });
   const fullName = getDisplayName(status, params);
   const faceDistance = getFaceDistance(matchResult);
+  const confidence = getConfidenceScore(matchResult);
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.step}>Step 5 of 5</Text>
-        <Text style={styles.title}>Verification pass</Text>
-        <Text style={styles.subtitle}>Generated from the current eKYC session.</Text>
+        <StepIndicator currentStep={5} label="Verification result" />
+        <PageHeader title="Digital ticket" subtitle="Generated from the current VisionAuth eKYC session." />
 
         <View style={[styles.ticketCard, { borderColor: ticket.color }]}>
           <View style={styles.ticketHeader}>
-            <Text style={styles.brand}>VisionAuth</Text>
-            <Text style={styles.ticketType}>Digital ticket</Text>
+            <View>
+              <Text style={styles.brand}>VisionAuth</Text>
+              <Text style={styles.ticketType}>Secure verification pass</Text>
+            </View>
+            <VerificationCode sessionId={status?.session_id} />
           </View>
 
           <View style={[styles.badge, { backgroundColor: ticket.badgeBackground, borderColor: ticket.color }]}>
@@ -114,19 +128,41 @@ export default function ResultScreen() {
           <Text style={styles.ticketTitle}>{ticket.title}</Text>
           <Text style={styles.ticketDescription}>{ticket.description}</Text>
 
-          <View style={styles.divider} />
+          <View style={styles.meterCard}>
+            <ConfidenceMeter value={confidence} label="Face match confidence" tone={ticket.tone} />
+            <Text style={styles.distanceText}>Distance: {isLoading ? 'Checking...' : faceDistance}</Text>
+          </View>
 
-          <DetailRow label="Name" value={fullName} />
-          <DetailRow label="Session ID" value={isLoading ? 'Checking...' : String(status?.session_id ?? 'Unavailable')} />
-          <DetailRow label="Timestamp" value={new Date().toLocaleString()} />
-          <DetailRow label="Backend decision" value={isLoading ? 'Checking...' : decision ?? ticket.badge} />
-          <DetailRow label="Face match distance" value={isLoading ? 'Checking...' : faceDistance} />
+          <ChipRow>
+            <StatusChip label={status?.document_uploaded ? 'ID captured' : 'ID pending'} tone={status?.document_uploaded ? 'green' : 'slate'} />
+            <StatusChip label={status?.selfie_uploaded ? 'Selfie captured' : 'Selfie pending'} tone={status?.selfie_uploaded ? 'green' : 'slate'} />
+            <StatusChip label={status?.liveness_passed ? 'Liveness passed' : 'Liveness pending'} tone={status?.liveness_passed ? 'green' : 'amber'} />
+          </ChipRow>
         </View>
 
+        <InfoCard title="Identity" style={styles.section}>
+          <DetailRow label="Name" value={fullName} />
+          <DetailRow label="Backend decision" value={isLoading ? 'Checking...' : decision ?? ticket.badge} />
+        </InfoCard>
+
+        <InfoCard title="Session" style={styles.section}>
+          <DetailRow label="Session ID" value={isLoading ? 'Checking...' : String(status?.session_id ?? 'Unavailable')} />
+          <DetailRow label="Status" value={String(matchResult?.session_status || decision || 'Checking')} />
+        </InfoCard>
+
+        <InfoCard title="Biometric result" style={styles.section}>
+          <DetailRow label="Face match distance" value={isLoading ? 'Checking...' : faceDistance} />
+          <DetailRow label="Liveness" value={status?.liveness_passed ? 'Passed' : isLoading ? 'Checking...' : 'Pending'} />
+        </InfoCard>
+
+        <InfoCard title="Timestamp" style={styles.section}>
+          <DetailRow label="Generated" value={new Date().toLocaleString()} />
+        </InfoCard>
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
         <View style={styles.actions}>
-          <Pressable style={styles.button} onPress={returnToStart}>
-            <Text style={styles.buttonText}>Start new verification</Text>
-          </Pressable>
+          <PrimaryButton label="Start new verification" onPress={returnToStart} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -152,6 +188,17 @@ async function postFaceMatchResult() {
   }
 
   return data;
+}
+
+function VerificationCode({ sessionId }: { sessionId?: string }) {
+  const code = String(sessionId || 'VISIONAUTH').replaceAll('-', '').slice(0, 12).toUpperCase();
+  return (
+    <View style={styles.codeBlock}>
+      {Array.from({ length: 16 }).map((_, index) => (
+        <View key={index} style={[styles.codePixel, code.charCodeAt(index % code.length) % 2 === 0 && styles.codePixelActive]} />
+      ))}
+    </View>
+  );
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -200,9 +247,10 @@ function getTicketState({
     return {
       badge: 'CHECKING',
       title: 'Checking verification...',
-      description: 'Please wait while we process your identity.',
+      description: 'Please wait while VisionAuth processes your identity.',
       color: '#60A5FA',
       badgeBackground: '#172554',
+      tone: 'blue' as ChipTone,
     };
   }
 
@@ -210,9 +258,10 @@ function getTicketState({
     return {
       badge: 'VERIFIED',
       title: 'Identity verified',
-      description: 'The identity verification passed successfully.',
+      description: 'Document, selfie, liveness, and face match checks passed successfully.',
       color: '#22C55E',
       badgeBackground: '#123820',
+      tone: 'green' as ChipTone,
     };
   }
 
@@ -220,9 +269,10 @@ function getTicketState({
     return {
       badge: 'REJECTED',
       title: 'Identity rejected',
-      description: 'The selfie did not meet the backend face-match threshold for this session.',
+      description: 'The session did not meet the configured biometric verification thresholds.',
       color: '#EF4444',
       badgeBackground: '#3F1218',
+      tone: 'red' as ChipTone,
     };
   }
 
@@ -230,9 +280,10 @@ function getTicketState({
     return {
       badge: 'MANUAL REVIEW',
       title: 'Manual review required',
-      description: 'The result requires manual review because the confidence is borderline.',
+      description: 'The result requires operator review because the confidence is borderline.',
       color: '#F59E0B',
       badgeBackground: '#3A2708',
+      tone: 'amber' as ChipTone,
     };
   }
 
@@ -240,9 +291,10 @@ function getTicketState({
     return {
       badge: 'CHECKING',
       title: 'Checking verification...',
-      description: 'Please wait while we process your identity.',
+      description: 'Please wait while VisionAuth processes your identity.',
       color: '#60A5FA',
       badgeBackground: '#172554',
+      tone: 'blue' as ChipTone,
     };
   }
 
@@ -253,15 +305,17 @@ function getTicketState({
       description: 'The backend request failed before a verification decision could be loaded.',
       color: '#EF4444',
       badgeBackground: '#3F1218',
+      tone: 'red' as ChipTone,
     };
   }
 
   return {
-    badge: 'CHECKING',
+    badge: matchResult?.passed ? 'VERIFIED' : 'CHECKING',
     title: 'Checking verification...',
-    description: 'Please wait while we process your identity.',
+    description: 'Please wait while VisionAuth processes your identity.',
     color: '#60A5FA',
     badgeBackground: '#172554',
+    tone: 'blue' as ChipTone,
   };
 }
 
@@ -295,65 +349,80 @@ function getFaceDistance(matchResult: FaceMatchResult | null) {
   return typeof distance === 'number' ? distance.toFixed(4) : 'Unavailable';
 }
 
+function getConfidenceScore(matchResult: FaceMatchResult | null) {
+  const distance = matchResult?.distance ?? matchResult?.face_match_distance ?? matchResult?.final_face_match_distance;
+  const reviewThreshold = matchResult?.review_threshold ?? 0.60;
+
+  if (typeof distance !== 'number' || !Number.isFinite(distance)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(1, 1 - distance / reviewThreshold));
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0B1220',
+    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
     padding: 24,
   },
-  step: {
-    color: '#60A5FA',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  title: {
-    color: 'white',
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-  subtitle: {
-    color: '#C7D2FE',
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: 24,
-  },
   ticketCard: {
-    backgroundColor: '#111827',
-    borderRadius: 18,
+    backgroundColor: 'rgba(17, 24, 39, 0.98)',
+    borderRadius: 24,
     borderWidth: 1.5,
+    gap: 16,
     padding: 20,
+    shadowColor: '#020617',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.28,
+    shadowRadius: 26,
   },
   ticketHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
   },
   brand: {
-    color: 'white',
-    fontSize: 18,
+    color: vaColors.text,
+    fontSize: 20,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   ticketType: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    color: vaColors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 4,
     textTransform: 'uppercase',
+  },
+  codeBlock: {
+    backgroundColor: '#E2E8F0',
+    borderRadius: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    height: 46,
+    padding: 5,
+    width: 46,
+  },
+  codePixel: {
+    backgroundColor: 'transparent',
+    borderRadius: 1,
+    height: 8,
+    margin: 1,
+    width: 8,
+  },
+  codePixelActive: {
+    backgroundColor: '#0F172A',
   },
   badge: {
     alignSelf: 'flex-start',
     borderRadius: 999,
     borderWidth: 1,
-    marginBottom: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
   },
   badgeText: {
     fontSize: 13,
@@ -361,49 +430,58 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   ticketTitle: {
-    color: 'white',
-    fontSize: 30,
+    color: vaColors.text,
+    fontSize: 32,
     fontWeight: '900',
-    marginBottom: 10,
+    lineHeight: 38,
   },
   ticketDescription: {
-    color: '#CBD5E1',
+    color: vaColors.subtle,
     fontSize: 15,
     lineHeight: 22,
   },
-  divider: {
-    backgroundColor: '#334155',
-    height: 1,
-    marginVertical: 18,
+  meterCard: {
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    borderColor: 'rgba(148, 163, 184, 0.12)',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
+    padding: 14,
+  },
+  distanceText: {
+    color: vaColors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  section: {
+    marginTop: 14,
   },
   detailRow: {
+    borderBottomColor: 'rgba(148, 163, 184, 0.10)',
+    borderBottomWidth: 1,
     gap: 6,
-    marginBottom: 13,
+    paddingBottom: 12,
+    marginBottom: 12,
   },
   detailLabel: {
-    color: '#94A3B8',
+    color: vaColors.muted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 0.7,
     textTransform: 'uppercase',
   },
   detailValue: {
     color: '#E2E8F0',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  errorText: {
+    color: '#FCA5A5',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 14,
   },
   actions: {
     marginTop: 24,
-  },
-  button: {
-    alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 16,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
   },
 });

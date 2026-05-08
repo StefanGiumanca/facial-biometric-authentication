@@ -85,7 +85,8 @@ export function SessionsPage() {
     const verified = sessions.filter((session) => matchesFilter(session, 'VERIFIED')).length;
     const rejected = sessions.filter((session) => matchesFilter(session, 'REJECTED')).length;
     const review = sessions.filter((session) => matchesFilter(session, 'MANUAL_REVIEW')).length;
-    return { verified, rejected, review };
+    const inProgress = sessions.filter((session) => matchesFilter(session, 'IN_PROGRESS')).length;
+    return { verified, rejected, review, inProgress };
   }, [sessions]);
 
   return (
@@ -105,11 +106,12 @@ export function SessionsPage() {
         }
       />
 
-      <div className="metric-grid">
+      <div className="metric-grid metric-grid--five">
         <MetricCard label="Total sessions" value={String(sessions.length)} helper="Latest 50 records from /admin/sessions" />
         <MetricCard label="Verified" value={String(metrics.verified)} helper="Accepted or approved outcomes" />
         <MetricCard label="Rejected" value={String(metrics.rejected)} helper="Failed or security-locked sessions" />
         <MetricCard label="Manual review" value={String(metrics.review)} helper="Manual decision required" />
+        <MetricCard label="In progress" value={String(metrics.inProgress)} helper="Capture, OCR, or liveness still pending" />
       </div>
 
       <SectionCard title="Sessions" hint="Filter the queue and drill into a single review case.">
