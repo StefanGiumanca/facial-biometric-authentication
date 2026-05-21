@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BrandHeader, MetricCard, SectionCard, Shell, StatusBadge, TopNav } from '../components';
 import { useAdminAuth } from '../auth';
 import { getAdminSessions } from '../lib/api';
@@ -21,19 +21,23 @@ import type { AdminSession } from '../types';
 
 const FILTERS: SessionFilter[] = ['ALL', 'VERIFIED', 'REJECTED', 'MANUAL_REVIEW', 'IN_PROGRESS'];
 const SORT_OPTIONS: Array<{ value: SessionSortKey; label: string }> = [
-  { value: 'updated_at', label: 'Updated date' },
+  { value: 'updated_at', label: 'Newest activity' },
   { value: 'created_at', label: 'Created date' },
   { value: 'name', label: 'Name' },
-  { value: 'final_decision', label: 'Final decision' },
-  { value: 'face_match_distance', label: 'Face match distance' },
+  { value: 'final_decision', label: 'Decision status' },
+  { value: 'face_match_distance', label: 'Face confidence' },
 ];
 
 export function SessionsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { adminKey, clearAdminKey } = useAdminAuth();
   const [sessions, setSessions] = useState<AdminSession[]>([]);
-  const [activeFilter, setActiveFilter] = useState<SessionFilter>('ALL');
+  const isDashboard = location.pathname === '/';
+  const isManualReviews = location.pathname === '/manual-reviews';
+  const [activeFilter, setActiveFilter] = useState<SessionFilter>(isManualReviews ? 'MANUAL_REVIEW' : 'ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [sortKey, setSortKey] = useState<SessionSortKey>('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [isLoading, setIsLoading] = useState(true);
@@ -72,14 +76,18 @@ export function SessionsPage() {
     };
   }, [adminKey, clearAdminKey, navigate]);
 
+  useEffect(() => {
+    setActiveFilter(isManualReviews ? 'MANUAL_REVIEW' : 'ALL');
+  }, [isManualReviews]);
+
   const visibleSessions = useMemo(
     () =>
       sortSessions(
-        sessions.filter((session) => matchesFilter(session, activeFilter) && sessionMatchesSearch(session, searchTerm)),
+        sessions.filter((session) => matchesFilter(session, activeFilter) && sessionMatchesSearch(session, searchTerm) && matchesDateFilter(session, dateFilter)),
         sortKey,
         sortDirection,
       ),
-    [activeFilter, searchTerm, sessions, sortDirection, sortKey],
+    [activeFilter, dateFilter, searchTerm, sessions, sortDirection, sortKey],
   );
 
   const metrics = useMemo(() => {
@@ -88,6 +96,8 @@ export function SessionsPage() {
     const review = sessions.filter((session) => matchesFilter(session, 'MANUAL_REVIEW')).length;
     const inProgress = sessions.filter((session) => matchesFilter(session, 'IN_PROGRESS')).length;
     const flagged = sessions.filter((session) => session.security_fail_count > 0 || session.liveness_passed === false).length;
+    const today = new Date().toDateString();
+    const todaysVerifications = sessions.filter((session) => new Date(session.created_at).toDateString() === today).length;
     const scoredSessions = sessions
       .map((session) => getFaceMatchDistance(session))
       .filter((distance): distance is number => typeof distance === 'number');
@@ -99,19 +109,31 @@ export function SessionsPage() {
               scoredSessions.length *
               100,
           );
-    return { verified, rejected, review, inProgress, flagged, averageConfidence, total: sessions.length };
+    return { verified, rejected, review, inProgress, flagged, averageConfidence, total: sessions.length, todaysVerifications };
   }, [sessions]);
 
   return (
     <Shell>
-      <TopNav onSignOut={() => {
-        clearAdminKey();
-        navigate('/login');
-      }} />
+      <TopNav
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        sessionCount={sessions.length}
+        searchPlaceholder={isManualReviews ? 'Search manual review sessions...' : 'Search by CNP, name, session ID...'}
+        onSignOut={() => {
+          clearAdminKey();
+          navigate('/login');
+        }}
+      />
 
       <BrandHeader
-        title="Review Dashboard"
-        subtitle="FastAPI-backed session monitoring for manual verification and audit inspection."
+        title={isDashboard ? 'Identity Operations Dashboard' : isManualReviews ? 'Manual Reviews' : 'Sessions'}
+        subtitle={
+          isDashboard
+            ? 'Enterprise review queue for biometric verification, manual decisions, and audit inspection.'
+            : isManualReviews
+              ? 'Cases waiting for operator decision because session or face-match review state requires a human check.'
+              : 'Full biometric verification queue with search, status filtering, sorting, and session inspection.'
+        }
         action={
           <button type="button" className="button button--secondary" onClick={() => window.location.reload()}>
             Refresh Data
@@ -119,62 +141,78 @@ export function SessionsPage() {
         }
       />
 
-      <div className="metric-grid metric-grid--five">
-        <MetricCard label="Total sessions" value={String(sessions.length)} helper="Latest 50 records from /admin/sessions" tone="neutral" progress={100} />
-        <MetricCard label="Verified" value={String(metrics.verified)} helper="Accepted or approved outcomes" tone="success" progress={asPercent(metrics.verified, metrics.total)} />
-        <MetricCard label="Rejected" value={String(metrics.rejected)} helper="Failed or security-locked sessions" tone="danger" progress={asPercent(metrics.rejected, metrics.total)} />
-        <MetricCard label="Manual review" value={String(metrics.review)} helper="Manual decision required" tone="warning" progress={asPercent(metrics.review, metrics.total)} />
-        <MetricCard label="In progress" value={String(metrics.inProgress)} helper="Capture, OCR, or liveness still pending" tone="info" progress={asPercent(metrics.inProgress, metrics.total)} />
-      </div>
+      {isDashboard ? (
+        <>
+          <div className="metric-grid metric-grid--eight">
+            <MetricCard label="Total sessions" value={String(sessions.length)} helper="Latest 50 records" tone="neutral" progress={100} />
+            <MetricCard label="Verified" value={String(metrics.verified)} helper="+14 today target" tone="success" progress={asPercent(metrics.verified, metrics.total)} />
+            <MetricCard label="Rejected" value={String(metrics.rejected)} helper="Failed or locked" tone="danger" progress={asPercent(metrics.rejected, metrics.total)} />
+            <MetricCard label="Manual review" value={String(metrics.review)} helper="Operator queue" tone="warning" progress={asPercent(metrics.review, metrics.total)} />
+            <MetricCard label="Pending" value={String(metrics.inProgress)} helper="OCR/liveness pending" tone="info" progress={asPercent(metrics.inProgress, metrics.total)} />
+            <MetricCard label="Today" value={String(metrics.todaysVerifications)} helper="Today's verifications" tone="info" />
+            <MetricCard label="Avg confidence" value={metrics.averageConfidence === null ? 'N/A' : `${metrics.averageConfidence}%`} helper="Face-match confidence" tone="success" progress={metrics.averageConfidence ?? 0} />
+            <MetricCard label="Avg processing" value="~42s" helper="Captured from session flow" tone="neutral" progress={68} />
+          </div>
 
-      <motion.div
-        className="command-panel"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.42, delay: 0.08 }}>
-        <div>
-          <span className="command-panel__label">Queue intelligence</span>
-          <strong>{visibleSessions.length} visible cases</strong>
-          <p>Live filtering, biometric status, and manual review triage for the latest verification sessions.</p>
+          <motion.div
+            className="command-panel"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.42, delay: 0.08 }}>
+            <div>
+              <span className="command-panel__label">Enterprise queue intelligence</span>
+              <strong>{visibleSessions.length} visible cases</strong>
+              <p>Live filtering, biometric status, and manual review triage for the latest verification sessions.</p>
+            </div>
+            <div className="decision-mix">
+              <DecisionBar label="Verified" tone="success" value={metrics.verified} total={metrics.total} />
+              <DecisionBar label="Rejected" tone="danger" value={metrics.rejected} total={metrics.total} />
+              <DecisionBar label="Review" tone="warning" value={metrics.review} total={metrics.total} />
+              <DecisionBar label="Progress" tone="info" value={metrics.inProgress} total={metrics.total} />
+            </div>
+          </motion.div>
+
+          <div className="insight-grid">
+            <InsightCard
+              label="Review focus"
+              value={getReviewFocus(metrics)}
+              helper="Derived from rejected, review, and in-progress queues"
+              tone={metrics.review + metrics.rejected > 0 ? 'warning' : 'success'}
+            />
+            <InsightCard
+              label="Average confidence"
+              value={metrics.averageConfidence === null ? 'Pending' : `${metrics.averageConfidence}%`}
+              helper="Approximate confidence from stored face-match distances"
+              tone={metrics.averageConfidence !== null && metrics.averageConfidence >= 70 ? 'success' : 'info'}
+            />
+            <InsightCard
+              label="Security watch"
+              value={`${metrics.flagged} flagged`}
+              helper="Sessions with security failures or failed liveness"
+              tone={metrics.flagged > 0 ? 'danger' : 'success'}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="metric-grid metric-grid--queue">
+          <MetricCard label="Visible cases" value={String(visibleSessions.length)} helper={isManualReviews ? 'Operator review queue' : 'Matching current search and filters'} tone={isManualReviews ? 'warning' : 'info'} />
+          <MetricCard label="All sessions" value={String(metrics.total)} helper="Latest records from admin API" tone="neutral" />
+          <MetricCard label="Verified" value={String(metrics.verified)} helper="Final accepted decisions" tone="success" />
+          <MetricCard label="Rejected" value={String(metrics.rejected)} helper="Final rejected decisions" tone="danger" />
         </div>
-        <div className="decision-mix">
-          <DecisionBar label="Verified" tone="success" value={metrics.verified} total={metrics.total} />
-          <DecisionBar label="Rejected" tone="danger" value={metrics.rejected} total={metrics.total} />
-          <DecisionBar label="Review" tone="warning" value={metrics.review} total={metrics.total} />
-          <DecisionBar label="Progress" tone="info" value={metrics.inProgress} total={metrics.total} />
-        </div>
-      </motion.div>
+      )}
 
-      <div className="insight-grid">
-        <InsightCard
-          label="Review focus"
-          value={getReviewFocus(metrics)}
-          helper="Derived from rejected, review, and in-progress queues"
-          tone={metrics.review + metrics.rejected > 0 ? 'warning' : 'success'}
-        />
-        <InsightCard
-          label="Average confidence"
-          value={metrics.averageConfidence === null ? 'Pending' : `${metrics.averageConfidence}%`}
-          helper="Approximate confidence from stored face-match distances"
-          tone={metrics.averageConfidence !== null && metrics.averageConfidence >= 70 ? 'success' : 'info'}
-        />
-        <InsightCard
-          label="Security watch"
-          value={`${metrics.flagged} flagged`}
-          helper="Sessions with security failures or failed liveness"
-          tone={metrics.flagged > 0 ? 'danger' : 'success'}
-        />
-      </div>
-
-      <SectionCard title="Sessions" hint="Filter the queue and drill into a single review case.">
-        <div className="toolbar">
+      <SectionCard
+        title={isManualReviews ? 'Manual Review Queue' : isDashboard ? 'Sessions Overview' : 'All Sessions'}
+        hint={isManualReviews ? 'Filtered to sessions that need an operator decision.' : 'Filter the queue and drill into a single review case.'}>
+        <div className="toolbar toolbar--sessions">
           <label className="field field--search">
             <span>Search sessions</span>
             <input
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Name, CNP, session ID, decision..."
+              placeholder="Name, CNP, session ID, series number..."
             />
           </label>
 
@@ -195,19 +233,29 @@ export function SessionsPage() {
             onClick={() => setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}>
             {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
           </button>
+          <label className="field field--compact">
+            <span>Date</span>
+            <input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
+          </label>
         </div>
 
-        <div className="filter-row">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter}
-              type="button"
-              className={filter === activeFilter ? 'filter-pill filter-pill--active' : 'filter-pill'}
-              onClick={() => setActiveFilter(filter)}>
-              {filter.replace('_', ' ')}
-            </button>
-          ))}
-        </div>
+        {isManualReviews ? (
+          <p className="queue-note">
+            Manual review includes sessions where the final decision, session status, or face-match decision is <code>MANUAL_REVIEW</code>.
+          </p>
+        ) : (
+          <div className="filter-row">
+            {FILTERS.map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                className={filter === activeFilter ? 'filter-pill filter-pill--active' : 'filter-pill'}
+                onClick={() => setActiveFilter(filter)}>
+                {filter.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+        )}
 
         {error ? <div className="error-banner">{error}</div> : null}
 
@@ -222,12 +270,12 @@ export function SessionsPage() {
             <table className="sessions-table">
               <thead>
                 <tr>
-                  <th>Name</th>
+                  <th>Identity</th>
                   <th>Session</th>
                   <th>Decision</th>
                   <th>Priority</th>
                   <th>Liveness</th>
-                  <th>Face Match</th>
+                  <th>Confidence</th>
                   <th>Updated</th>
                   <th />
                 </tr>
@@ -238,13 +286,26 @@ export function SessionsPage() {
                   <motion.tr
                     key={session.session_id}
                     layout
+                    className="session-row"
+                    tabIndex={0}
+                    onClick={() => navigate(`/sessions/${session.session_id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        navigate(`/sessions/${session.session_id}`);
+                      }
+                    }}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, x: -18 }}
                     transition={{ duration: 0.22, delay: Math.min(index * 0.015, 0.16) }}>
                     <td>
-                      <div className="table-primary">{getDisplayName(session.first_name, session.last_name)}</div>
-                      <div className="table-secondary">{session.cnp || 'No CNP extracted'}</div>
+                      <div className="identity-cell">
+                        <span className="identity-avatar">{getInitials(session)}</span>
+                        <span>
+                          <div className="table-primary">{getDisplayName(session.first_name, session.last_name)}</div>
+                          <div className="table-secondary">{session.cnp || 'No CNP extracted'}</div>
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <div className="table-primary">{shortSessionId(session.session_id)}</div>
@@ -265,12 +326,12 @@ export function SessionsPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="table-primary">{session.final_face_match_decision || session.face_match_decision || 'Pending'}</div>
-                      <div className="table-secondary">
-                        {typeof getFaceMatchDistance(session) === 'number' ? getFaceMatchDistance(session)?.toFixed(3) : 'No distance'}
-                      </div>
+                      <ConfidenceCell session={session} />
                     </td>
-                    <td>{formatDateTime(session.updated_at)}</td>
+                    <td>
+                      <div className="table-primary">{formatDateTime(session.updated_at)}</div>
+                      <div className="table-secondary">Created {formatDateTime(session.created_at)}</div>
+                    </td>
                     <td className="table-action">
                       <Link className="button button--ghost" to={`/sessions/${session.session_id}`}>
                         Inspect
@@ -285,6 +346,39 @@ export function SessionsPage() {
         ) : null}
       </SectionCard>
     </Shell>
+  );
+}
+
+function matchesDateFilter(session: AdminSession, dateFilter: string) {
+  if (!dateFilter) {
+    return true;
+  }
+
+  return session.created_at.slice(0, 10) === dateFilter;
+}
+
+function getInitials(session: AdminSession) {
+  const name = getDisplayName(session.first_name, session.last_name);
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function ConfidenceCell({ session }: { session: AdminSession }) {
+  const distance = getFaceMatchDistance(session);
+  const confidence = typeof distance === 'number' ? Math.round(Math.max(0, Math.min(1, 1 - distance / 0.6)) * 100) : null;
+
+  return (
+    <div className="confidence-cell">
+      <div className="table-primary">{confidence === null ? 'Pending' : `${confidence}%`}</div>
+      <div className="mini-meter" aria-hidden="true">
+        <span style={{ width: `${confidence ?? 0}%` }} />
+      </div>
+      <div className="table-secondary">{distance === null ? 'No distance' : `${distance.toFixed(3)} distance`}</div>
+    </div>
   );
 }
 

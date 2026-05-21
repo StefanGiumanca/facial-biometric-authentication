@@ -1,20 +1,33 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { API_BASE_URL, postKyc } from '@/constants/api';
 import {
+  AppBackground,
+  BiometricPulse,
   ChipRow,
+  FeatureChip,
   InfoCard,
   PrimaryButton,
   SecondaryButton,
-  StatusChip,
   vaColors,
 } from '@/components/visionauth-ui';
 
 export default function StartScreen() {
   const [isStarting, setIsStarting] = useState(false);
+  const reveal = useSharedValue(0);
+
+  useEffect(() => {
+    reveal.value = withTiming(1, { duration: 720, easing: Easing.out(Easing.cubic) });
+  }, [reveal]);
+
+  const heroStyle = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [{ translateY: 18 - reveal.value * 18 }],
+  }));
 
   const handleStartVerification = async () => {
     setIsStarting(true);
@@ -31,50 +44,58 @@ export default function StartScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.heroMark}>
-          <View style={styles.heroRingOuter}>
-            <View style={styles.heroRingInner}>
-              <Text style={styles.heroMarkText}>VA</Text>
+    <AppBackground>
+      <SafeAreaView style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Animated.View style={[styles.hero, heroStyle]}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandMark}>
+                <Text style={styles.brandMarkText}>VA</Text>
+              </View>
+              <View>
+                <Text style={styles.brand}>VisionAuth</Text>
+                <Text style={styles.brandSubline}>Biometric eKYC suite</Text>
+              </View>
             </View>
+
+            <BiometricPulse />
+
+            <Text style={styles.title}>Secure identity verification</Text>
+            <Text style={styles.subtitle}>
+              OCR, face match, liveness, and audit-ready evidence in one guided biometric flow.
+            </Text>
+
+            <ChipRow>
+              <FeatureChip label="OCR" />
+              <FeatureChip label="Face Match" tone="green" />
+              <FeatureChip label="Liveness" tone="amber" />
+              <FeatureChip label="Audit Trail" tone="slate" />
+            </ChipRow>
+          </Animated.View>
+
+          <InfoCard title="Verification stack" style={styles.heroCard}>
+            <FeatureRow title="ID intelligence" text="Romanian ID OCR with document face extraction." />
+            <FeatureRow title="Biometric binding" text="Selfie comparison against the extracted ID portrait." />
+            <FeatureRow title="Challenge-response" text="Randomized liveness video checks for presentation attacks." />
+            <FeatureRow title="Operator evidence" text="Every session remains traceable for admin review." last />
+          </InfoCard>
+
+          <InfoCard title="How it works" style={styles.howItWorksCard}>
+            <View style={styles.previewSteps}>
+              <PreviewStep number="01" title="Scan ID" text="Capture a clear document image." />
+              <PreviewStep number="02" title="Review data" text="Confirm extracted identity fields." />
+              <PreviewStep number="03" title="Face check" text="Take a selfie and complete liveness." />
+              <PreviewStep number="04" title="Ticket" text="Receive the final verification decision." />
+            </View>
+          </InfoCard>
+
+          <View style={styles.actions}>
+            <PrimaryButton label={isStarting ? 'Starting verification...' : 'Start verification'} onPress={handleStartVerification} disabled={isStarting} />
+            <SecondaryButton label="Admin logs" onPress={() => router.push('/admin')} />
           </View>
-        </View>
-
-        <Text style={styles.brand}>VisionAuth</Text>
-        <Text style={styles.title}>Biometric identity verification</Text>
-        <Text style={styles.subtitle}>
-          A premium eKYC flow for Romanian ID OCR, selfie matching, randomized liveness, and secure audit review.
-        </Text>
-
-        <ChipRow>
-          <StatusChip label="OCR" />
-          <StatusChip label="Face Match" tone="green" />
-          <StatusChip label="Liveness" tone="amber" />
-          <StatusChip label="Audit Logs" tone="slate" />
-        </ChipRow>
-
-        <InfoCard title="Verification stack" style={styles.heroCard}>
-          <FeatureRow title="ID OCR" text="Extracts identity fields and document face crop." />
-          <FeatureRow title="Face match" text="Compares the selfie against the ID portrait." />
-          <FeatureRow title="Liveness challenge" text="Uses randomized challenge-response video checks." />
-          <FeatureRow title="Secure audit trail" text="Stores review evidence and operator decisions." last />
-        </InfoCard>
-
-        <InfoCard title="How it works" style={styles.howItWorksCard}>
-          <View style={styles.previewSteps}>
-            <PreviewStep number="01" title="Scan ID" text="Capture the front of the Romanian document." />
-            <PreviewStep number="02" title="Verify face" text="Take a selfie and complete liveness." />
-            <PreviewStep number="03" title="Decision" text="Receive a digital verification ticket." />
-          </View>
-        </InfoCard>
-
-        <View style={styles.actions}>
-          <PrimaryButton label={isStarting ? 'Starting verification...' : 'Start verification'} onPress={handleStartVerification} disabled={isStarting} />
-          <SecondaryButton label="Admin logs" onPress={() => router.push('/admin')} />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </AppBackground>
   );
 }
 
@@ -103,70 +124,65 @@ function PreviewStep({ number, title, text }: { number: string; title: string; t
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
   },
-  heroMark: {
+  hero: {
     alignItems: 'center',
-    marginBottom: 22,
+    gap: 18,
   },
-  heroRingOuter: {
+  brandRow: {
     alignItems: 'center',
-    backgroundColor: 'rgba(37, 99, 235, 0.13)',
-    borderColor: 'rgba(96, 165, 250, 0.22)',
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 104,
-    justifyContent: 'center',
-    width: 104,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 4,
   },
-  heroRingInner: {
+  brandMark: {
     alignItems: 'center',
     backgroundColor: vaColors.blue,
-    borderRadius: 28,
-    height: 64,
+    borderColor: 'rgba(191, 219, 254, 0.36)',
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 46,
     justifyContent: 'center',
-    shadowColor: vaColors.blue,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.35,
-    shadowRadius: 22,
-    width: 64,
+    width: 46,
   },
-  heroMarkText: {
+  brandMarkText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '900',
   },
   brand: {
-    color: vaColors.blueSoft,
-    fontSize: 15,
+    color: vaColors.text,
+    fontSize: 20,
     fontWeight: '900',
-    letterSpacing: 1.2,
-    marginBottom: 8,
-    textAlign: 'center',
+  },
+  brandSubline: {
+    color: vaColors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
     textTransform: 'uppercase',
   },
   title: {
     color: vaColors.text,
-    fontSize: 37,
+    fontSize: 38,
     fontWeight: '900',
     lineHeight: 43,
-    marginBottom: 14,
     textAlign: 'center',
   },
   subtitle: {
     color: vaColors.subtle,
     fontSize: 16,
     lineHeight: 24,
-    marginBottom: 20,
     textAlign: 'center',
   },
   heroCard: {
-    marginTop: 22,
+    marginTop: 24,
   },
   howItWorksCard: {
     marginTop: 14,
@@ -209,8 +225,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   previewStep: {
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    borderRadius: 14,
+    backgroundColor: 'rgba(30, 41, 59, 0.46)',
+    borderColor: 'rgba(148, 163, 184, 0.12)',
+    borderRadius: 18,
+    borderWidth: 1,
     padding: 13,
   },
   previewNumber: {

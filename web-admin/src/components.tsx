@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { formatDateTime, getStatusTone } from './lib/utils';
+import { useTheme } from './theme';
 
 const cardMotion = {
   initial: { opacity: 0, y: 18, scale: 0.985 },
@@ -10,20 +11,66 @@ const cardMotion = {
 } as const;
 
 export function Shell({ children }: { children: ReactNode }) {
+  const location = useLocation();
+
   return (
     <div className="shell">
       <div className="shell__backdrop shell__backdrop--one" />
       <div className="shell__backdrop shell__backdrop--two" />
       <div className="shell__grid" />
-      <div className="shell__scanline" />
-      <motion.div
-        className="shell__content"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.35 }}>
-        {children}
-      </motion.div>
+      <aside className="sidebar">
+        <Link to="/" className="sidebar__brand">
+          <span className="sidebar__brand-mark">VA</span>
+          <span>
+            <strong>VisionAuth</strong>
+            <small>Identity Ops</small>
+          </span>
+        </Link>
+        <nav className="sidebar__nav" aria-label="Dashboard navigation">
+          <SidebarLink to="/" icon="◇" label="Dashboard" active={location.pathname === '/'} />
+          <SidebarLink to="/sessions" icon="▦" label="Sessions" active={location.pathname.startsWith('/sessions')} />
+          <SidebarLink to="/manual-reviews" icon="◎" label="Manual Reviews" active={location.pathname === '/manual-reviews'} />
+          <SidebarLink to="/audit-logs" icon="⌁" label="Audit Logs" active={location.pathname === '/audit-logs'} />
+          <SidebarLink to="/analytics" icon="⌬" label="Analytics" active={location.pathname === '/analytics'} />
+          <SidebarLink to="/settings" icon="⚙" label="Settings" active={location.pathname === '/settings'} />
+        </nav>
+        <div className="sidebar__profile">
+          <span className="admin-avatar">A</span>
+          <span>
+            <strong>Admin Console</strong>
+            <small>dev-admin-key</small>
+          </span>
+        </div>
+      </aside>
+      <main className="workspace">
+        <motion.div
+          className="shell__content"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.35 }}>
+          {children}
+        </motion.div>
+      </main>
     </div>
+  );
+}
+
+function SidebarLink({
+  to,
+  icon,
+  label,
+  active,
+}: {
+  to: string;
+  icon: string;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <NavLink to={to} className={active ? 'sidebar-link sidebar-link--active' : 'sidebar-link'}>
+      <span className="sidebar-link__icon">{icon}</span>
+      <span>{label}</span>
+    </NavLink>
   );
 }
 
@@ -164,22 +211,53 @@ export function Timeline({
   );
 }
 
-export function TopNav({ onSignOut }: { onSignOut: () => void }) {
+export function TopNav({
+  onSignOut,
+  searchTerm,
+  onSearchChange,
+  sessionCount,
+  searchPlaceholder = 'Search by CNP, name, session ID...',
+}: {
+  onSignOut: () => void;
+  searchTerm?: string;
+  onSearchChange?: (value: string) => void;
+  sessionCount?: number;
+  searchPlaceholder?: string;
+}) {
+  const now = new Date();
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <motion.nav
       className="top-nav"
       initial={{ opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.34 }}>
-      <Link to="/" className="top-nav__brand">
-        <span className="top-nav__brand-mark">VA</span>
-        <span>VisionAuth Admin</span>
-      </Link>
+      <label className="top-nav__search">
+        <span>⌕</span>
+        <input
+          value={searchTerm ?? ''}
+          onChange={(event) => onSearchChange?.(event.target.value)}
+          placeholder={searchPlaceholder}
+          disabled={!onSearchChange}
+        />
+      </label>
       <div className="top-nav__actions">
+        {typeof sessionCount === 'number' ? <span className="top-nav__counter">{sessionCount} sessions</span> : null}
         <span className="top-nav__live">
           <span className="top-nav__live-dot" />
           Live review console
         </span>
+        <span className="top-nav__time">{now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} · {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          onClick={toggleTheme}>
+          {theme === 'dark' ? '☼' : '☾'}
+        </button>
+        <span className="admin-avatar">A</span>
         <button type="button" className="button button--ghost" onClick={onSignOut}>
           Clear Admin Key
         </button>

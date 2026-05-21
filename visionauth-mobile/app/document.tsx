@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
 import {
+  AppBackground,
   ChipRow,
   InfoCard,
   PageHeader,
@@ -157,79 +158,86 @@ export default function DocumentScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <StepIndicator currentStep={1} label="Document capture" />
-        <PageHeader
-          title="Scan your ID"
-          subtitle="Capture the front of the Romanian ID card clearly so OCR and face extraction can run."
-        />
+    <AppBackground>
+      <SafeAreaView style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <StepIndicator currentStep={1} label="Document capture" />
+          <PageHeader
+            eyebrow="Identity document"
+            title="Scan your ID"
+            subtitle="Align the Romanian ID inside the scanner frame so OCR and face extraction can run cleanly."
+          />
 
-        <InfoCard title="Scan document">
-          <ScannerFrame imageUri={asset?.uri} placeholder="No ID photo selected" />
-          <View style={styles.scanMeta}>
-            <StatusChip label={asset ? 'Image ready' : 'Awaiting image'} tone={asset ? 'green' : 'slate'} />
-            <StatusChip label="Romanian ID" />
-          </View>
-        </InfoCard>
-
-        <InfoCard title="Capture tips" style={styles.tipsCard}>
-          <View style={styles.tipRow}>
-            <Text style={styles.tipBullet}>01</Text>
-            <Text style={styles.tipText}>Keep all corners visible inside the scanner frame.</Text>
-          </View>
-          <View style={styles.tipRow}>
-            <Text style={styles.tipBullet}>02</Text>
-            <Text style={styles.tipText}>Avoid glare, blur, and strong shadows over the text.</Text>
-          </View>
-          <View style={styles.tipRow}>
-            <Text style={styles.tipBullet}>03</Text>
-            <Text style={styles.tipText}>Use good lighting and keep the document flat.</Text>
-          </View>
-        </InfoCard>
-
-        <View style={styles.row}>
-          <SecondaryButton label="Open camera" onPress={captureDocument} style={styles.rowButton} />
-          <SecondaryButton label="Choose photo" onPress={chooseDocument} style={styles.rowButton} />
-        </View>
-
-        <PrimaryButton label={isUploading ? 'Analyzing document...' : 'Upload ID card'} onPress={uploadDocument} disabled={isUploading} />
-
-        {documentResult && (
-          <InfoCard title="OCR result" style={styles.resultPanel}>
-            <ChipRow>
-              <StatusChip label="Document uploaded" tone="green" />
-              <StatusChip label="Face crop extracted" tone={documentResult.id_face_path ? 'green' : 'amber'} />
-              <StatusChip label="OCR data detected" tone="blue" />
-            </ChipRow>
-            <Text style={styles.resultTitle}>Document accepted</Text>
-            <Text style={styles.resultText}>ID face was extracted and OCR data was stored in the session.</Text>
-            {visibleDocumentFields.map((field) => {
-              const value = documentResult[field];
-              if (!value) {
-                return null;
-              }
-
-              return (
-                <Text key={field} style={styles.fieldText}>
-                  {field.replaceAll('_', ' ')}: {String(value)}
-                </Text>
-              );
-            })}
-            <PrimaryButton
-              label="Continue to review"
-              onPress={() =>
-                router.push({
-                  pathname: '/review',
-                  params: { documentResult: JSON.stringify(documentResult) },
-                })
-              }
-              style={styles.continueButton}
-            />
+          <InfoCard title="Live document scanner">
+            <ScannerFrame imageUri={asset?.uri} placeholder="No ID photo selected" />
+            <View style={styles.scanMeta}>
+              <StatusChip label={asset ? 'Image ready' : 'Awaiting image'} tone={asset ? 'green' : 'slate'} />
+              <StatusChip label="OCR standby" tone={asset ? 'blue' : 'slate'} />
+              <StatusChip label="Face crop" tone={documentResult?.id_face_path ? 'green' : 'amber'} />
+            </View>
           </InfoCard>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+
+          <InfoCard title="Capture tips" style={styles.tipsCard}>
+            <TipRow index="01" text="Keep all corners visible inside the scanner frame." />
+            <TipRow index="02" text="Avoid glare, blur, and strong shadows over the text." />
+            <TipRow index="03" text="Use good lighting and keep the document flat." />
+          </InfoCard>
+
+          <View style={styles.row}>
+            <SecondaryButton label="Open camera" onPress={captureDocument} style={styles.rowButton} />
+            <SecondaryButton label="Choose photo" onPress={chooseDocument} style={styles.rowButton} />
+          </View>
+
+          <PrimaryButton label={isUploading ? 'Analyzing document...' : 'Upload ID card'} onPress={uploadDocument} disabled={isUploading} />
+
+          {documentResult && (
+            <InfoCard title="OCR result" style={styles.resultPanel}>
+              <ChipRow>
+                <StatusChip label="Document uploaded" tone="green" />
+                <StatusChip label="Face crop extracted" tone={documentResult.id_face_path ? 'green' : 'amber'} />
+                <StatusChip label="OCR data detected" tone="blue" />
+              </ChipRow>
+              <Text style={styles.resultTitle}>Document accepted</Text>
+              <Text style={styles.resultText}>ID face was extracted and OCR data was stored in the session.</Text>
+              <View style={styles.fieldGrid}>
+                {visibleDocumentFields.map((field) => {
+                  const value = documentResult[field];
+                  if (!value) {
+                    return null;
+                  }
+
+                  return (
+                    <View key={field} style={styles.fieldPill}>
+                      <Text style={styles.fieldLabel}>{field.replaceAll('_', ' ')}</Text>
+                      <Text style={styles.fieldText}>{String(value)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <PrimaryButton
+                label="Continue to review"
+                onPress={() =>
+                  router.push({
+                    pathname: '/review',
+                    params: { documentResult: JSON.stringify(documentResult) },
+                  })
+                }
+                style={styles.continueButton}
+              />
+            </InfoCard>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </AppBackground>
+  );
+}
+
+function TipRow({ index, text }: { index: string; text: string }) {
+  return (
+    <View style={styles.tipRow}>
+      <Text style={styles.tipBullet}>{index}</Text>
+      <Text style={styles.tipText}>{text}</Text>
+    </View>
   );
 }
 
@@ -257,7 +265,6 @@ function getDocumentUploadErrorMessage(error: unknown) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
@@ -314,7 +321,24 @@ const styles = StyleSheet.create({
   fieldText: {
     color: '#E5E7EB',
     fontSize: 14,
-    textTransform: 'capitalize',
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  fieldGrid: {
+    gap: 8,
+  },
+  fieldPill: {
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    borderColor: 'rgba(148, 163, 184, 0.14)',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  fieldLabel: {
+    color: vaColors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   },
   continueButton: {
     marginTop: 4,

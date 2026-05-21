@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
 import {
+  AppBackground,
   ChipRow,
   InfoCard,
   PageHeader,
@@ -103,55 +104,64 @@ export default function SelfieScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <StepIndicator currentStep={3} label="Biometric capture" />
-        <PageHeader
-          title="Take a selfie"
-          subtitle="Keep your face centered and well lit. This selfie will be compared with the ID portrait."
-        />
+    <AppBackground>
+      <SafeAreaView style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <StepIndicator currentStep={3} label="Biometric capture" />
+          <PageHeader
+            eyebrow="Face binding"
+            title="Take a selfie"
+            subtitle="Center your face in the biometric frame. This selfie will be compared with the ID portrait."
+          />
 
-        <InfoCard title="Face capture">
-          <ScannerFrame imageUri={asset?.uri} placeholder="No selfie captured" variant="face" />
-          <ChipRow>
-            <StatusChip label="Face required" />
-            <StatusChip label="Compared with ID" tone="green" />
-          </ChipRow>
-        </InfoCard>
-
-        <InfoCard title="Capture guidance" style={styles.guidanceCard}>
-          <View style={styles.guidanceRow}>
-            <Text style={styles.guidanceIndex}>01</Text>
-            <Text style={styles.guidanceText}>Face the camera directly and keep your head centered.</Text>
-          </View>
-          <View style={styles.guidanceRow}>
-            <Text style={styles.guidanceIndex}>02</Text>
-            <Text style={styles.guidanceText}>Use good lighting without strong backlight.</Text>
-          </View>
-          <View style={styles.guidanceRow}>
-            <Text style={styles.guidanceIndex}>03</Text>
-            <Text style={styles.guidanceText}>Keep only one person visible in the frame.</Text>
-          </View>
-        </InfoCard>
-
-        <View style={styles.actions}>
-          <SecondaryButton label="Open camera" onPress={captureSelfie} />
-          <PrimaryButton label={isUploading ? 'Checking selfie...' : 'Upload selfie'} onPress={uploadSelfie} disabled={isUploading} />
-        </View>
-
-        {facesDetected !== null && (
-          <InfoCard title="Selfie accepted" style={styles.resultPanel}>
-            <ChipRow>
-              <StatusChip label="Face detected" tone="green" />
-              <StatusChip label={`${facesDetected} face${facesDetected === 1 ? '' : 's'}`} tone={facesDetected === 1 ? 'green' : 'amber'} />
-            </ChipRow>
-            <Text style={styles.resultTitle}>Selfie accepted</Text>
-            <Text style={styles.resultText}>Faces detected: {facesDetected}</Text>
-            <PrimaryButton label="Continue to liveness" onPress={() => router.push('/liveness')} />
+          <InfoCard title="Face capture" style={styles.faceCard}>
+            <Text style={styles.faceDescription}>
+              Use the front camera and keep your face inside the circular frame.
+            </Text>
+            <ScannerFrame imageUri={asset?.uri} placeholder="No selfie captured" variant="face" />
+            <View style={styles.faceChips}>
+              <ChipRow>
+                <StatusChip label="Face required" />
+                <StatusChip label="One person" tone="amber" />
+                <StatusChip label="Compared with ID" tone="green" />
+              </ChipRow>
+            </View>
           </InfoCard>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+
+          <InfoCard title="Capture guidance" style={styles.guidanceCard}>
+            <GuidanceRow index="01" text="Face the camera directly and keep your head centered." />
+            <GuidanceRow index="02" text="Use good lighting without strong backlight." />
+            <GuidanceRow index="03" text="Keep only one person visible in the frame." />
+          </InfoCard>
+
+          <View style={styles.actions}>
+            <SecondaryButton label="Open camera" onPress={captureSelfie} />
+            <PrimaryButton label={isUploading ? 'Checking selfie...' : 'Upload selfie'} onPress={uploadSelfie} disabled={isUploading} />
+          </View>
+
+          {facesDetected !== null && (
+            <InfoCard title="Selfie accepted" style={styles.resultPanel}>
+              <ChipRow>
+                <StatusChip label="Face detected" tone="green" />
+                <StatusChip label={`${facesDetected} face${facesDetected === 1 ? '' : 's'}`} tone={facesDetected === 1 ? 'green' : 'amber'} />
+              </ChipRow>
+              <Text style={styles.resultTitle}>Selfie accepted</Text>
+              <Text style={styles.resultText}>Faces detected: {facesDetected}</Text>
+              <PrimaryButton label="Continue to liveness" onPress={() => router.push('/liveness')} />
+            </InfoCard>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </AppBackground>
+  );
+}
+
+function GuidanceRow({ index, text }: { index: string; text: string }) {
+  return (
+    <View style={styles.guidanceRow}>
+      <Text style={styles.guidanceIndex}>{index}</Text>
+      <Text style={styles.guidanceText}>{text}</Text>
+    </View>
   );
 }
 
@@ -188,7 +198,6 @@ function getSelfieErrorMessage(error: unknown) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
@@ -197,6 +206,17 @@ const styles = StyleSheet.create({
   guidanceCard: {
     gap: 12,
     marginTop: 14,
+  },
+  faceCard: {
+    gap: 14,
+  },
+  faceDescription: {
+    color: vaColors.subtle,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  faceChips: {
+    marginTop: 2,
   },
   guidanceRow: {
     flexDirection: 'row',

@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getKyc, postKyc, uploadKycFile, type ApiError, type UploadAsset } from '@/constants/api';
 import {
+  AppBackground,
   ChipRow,
   InfoCard,
   PageHeader,
@@ -181,60 +182,64 @@ export default function LivenessScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ headerShown: false, title: '' }} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <StepIndicator currentStep={4} label="Liveness challenge" />
-        <PageHeader
-          title="Challenge response"
-          subtitle="Record a short video with your face visible and complete the randomized action."
-        />
-
-        <InfoCard style={styles.radarCard}>
-          <RadarVisual active={state.active} passed={result?.passed === true} failed={result?.passed === false} />
-          <Text style={styles.stateLabel}>{state.label}</Text>
-          <Text style={styles.stateText}>{state.text}</Text>
-          <ChipRow>
-            <StatusChip label={challenge?.challenge_type?.replace(/_/g, ' ') || 'Waiting'} tone={challenge ? 'blue' : 'slate'} />
-            <StatusChip label={asset ? 'Video ready' : 'No video'} tone={asset ? 'green' : 'slate'} />
-          </ChipRow>
-        </InfoCard>
-
-        <InfoCard title="Your challenge" style={styles.challengeCard}>
-          <Text style={styles.challengeText}>
-            {isLoadingChallenge ? 'Generating challenge...' : challenge?.instruction || 'Waiting for challenge'}
-          </Text>
-          <Text style={styles.challengeHint}>Start neutral for one second, then perform the requested action clearly.</Text>
-        </InfoCard>
-
-        <InfoCard title="Recording guidance" style={styles.instructions}>
-          <InstructionRow text="Keep the phone steady and use good lighting." />
-          <InstructionRow text="Keep only your face in frame." />
-          <InstructionRow text="Make the requested action clear for at least a few seconds." />
-        </InfoCard>
-
-        <View style={styles.actions}>
-          <SecondaryButton label={asset ? 'Record again' : 'Record liveness video'} onPress={recordVideo} disabled={isLoadingChallenge || !challenge} />
-          <PrimaryButton
-            label={isUploading ? 'Analyzing challenge...' : result?.passed ? 'Continue to result' : 'Upload challenge video'}
-            onPress={result?.passed ? () => router.push('/result') : uploadVideo}
-            disabled={isUploading || isLoadingChallenge || !challenge}
+    <AppBackground>
+      <SafeAreaView style={styles.screen}>
+        <Stack.Screen options={{ headerShown: false, title: '' }} />
+        <ScrollView contentContainerStyle={styles.content}>
+          <StepIndicator currentStep={4} label="Liveness challenge" />
+          <PageHeader
+            eyebrow="Challenge response"
+            title="Prove liveness"
+            subtitle="Record a short front-camera video with your face visible and complete the randomized action."
           />
-        </View>
 
-        <Pressable style={styles.ghostButton} onPress={requestChallenge} disabled={isUploading || isLoadingChallenge}>
-          <Text style={styles.ghostButtonText}>Try a new challenge</Text>
-        </Pressable>
-
-        {result && !result.passed && (
-          <InfoCard title="Challenge not completed" style={styles.resultPanel}>
-            <Text style={styles.resultText}>{result.message || result.error || 'Please try again.'}</Text>
-            <Text style={styles.resultText}>{formatChallengeDetails(result)}</Text>
-            <PrimaryButton label="Retry with new challenge" onPress={requestChallenge} />
+          <InfoCard style={styles.radarCard}>
+            <RadarVisual active={state.active} passed={result?.passed === true} failed={result?.passed === false} />
+            <Text style={styles.stateLabel}>{state.label}</Text>
+            <Text style={styles.stateText}>{state.text}</Text>
+            <ChipRow>
+              <StatusChip label={challenge?.challenge_type?.replace(/_/g, ' ') || 'Waiting'} tone={challenge ? 'blue' : 'slate'} />
+              <StatusChip label={asset ? 'Video ready' : 'No video'} tone={asset ? 'green' : 'slate'} />
+              <StatusChip label={isUploading ? 'Analyzing' : 'Challenge ready'} tone={isUploading ? 'amber' : challenge ? 'green' : 'slate'} />
+            </ChipRow>
           </InfoCard>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+
+          <InfoCard title="Your challenge" style={styles.challengeCard}>
+            <Text style={styles.challengeText}>
+              {isLoadingChallenge ? 'Generating challenge...' : challenge?.instruction || 'Waiting for challenge'}
+            </Text>
+            <Text style={styles.challengeHint}>Start neutral for one second, then perform the requested action clearly.</Text>
+          </InfoCard>
+
+          <InfoCard title="Recording guidance" style={styles.instructions}>
+            <InstructionRow text="Keep the phone steady and use good lighting." />
+            <InstructionRow text="Keep only your face in frame." />
+            <InstructionRow text="Make the requested action clear for at least a few seconds." />
+          </InfoCard>
+
+          <View style={styles.actions}>
+            <SecondaryButton label={asset ? 'Record again' : 'Record liveness video'} onPress={recordVideo} disabled={isLoadingChallenge || !challenge} />
+            <PrimaryButton
+              label={isUploading ? 'Analyzing challenge...' : result?.passed ? 'Continue to result' : 'Upload challenge video'}
+              onPress={result?.passed ? () => router.push('/result') : uploadVideo}
+              disabled={isUploading || isLoadingChallenge || !challenge}
+            />
+          </View>
+
+          <Pressable style={styles.ghostButton} onPress={requestChallenge} disabled={isUploading || isLoadingChallenge}>
+            <Text style={styles.ghostButtonText}>Try a new challenge</Text>
+          </Pressable>
+
+          {result && !result.passed && (
+            <InfoCard title="Challenge not completed" style={styles.resultPanel}>
+              <Text style={styles.resultText}>{result.message || result.error || 'Please try again.'}</Text>
+              <Text style={styles.resultText}>{formatChallengeDetails(result)}</Text>
+              <PrimaryButton label="Retry with new challenge" onPress={requestChallenge} />
+            </InfoCard>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </AppBackground>
   );
 }
 
@@ -358,7 +363,6 @@ function formatChallengeDetails(result: LivenessResponse) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,

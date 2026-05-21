@@ -39,6 +39,7 @@ export function SessionDetailPage() {
   const [adminNote, setAdminNote] = useState('');
   const [error, setError] = useState('');
   const [decisionMessage, setDecisionMessage] = useState('');
+  const [enlargedMedia, setEnlargedMedia] = useState<{ url: string; alt: string; kind: 'image' | 'video' } | null>(null);
 
   const loadData = useCallback(
     async (showLoading = true) => {
@@ -131,7 +132,7 @@ export function SessionDetailPage() {
         title="Session Detail"
         subtitle={session ? `Full audit view for ${session.session_id}` : 'Loading full audit view'}
         action={
-          <Link className="button button--secondary" to="/">
+          <Link className="button button--secondary" to="/sessions">
             Back to Sessions
           </Link>
         }
@@ -227,35 +228,41 @@ export function SessionDetailPage() {
                 />
               </SectionCard>
 
-              <SectionCard title="Visual Comparison" hint="Protected previews from FastAPI admin endpoints.">
-                <div className="media-grid">
-                  <motion.div className="media-card" whileHover={{ y: -4, scale: 1.01 }} transition={{ duration: 0.18 }}>
-                    <div className="media-card__title">ID Face Image</div>
-                    {session.id_face_path ? (
-                      <ProtectedMediaPreview
-                        adminKey={adminKey}
-                        url={buildAdminMediaUrl(session.session_id, 'id_face')}
-                        alt="ID face"
-                      />
-                    ) : (
-                      <div className="media-fallback">No ID face image available.</div>
-                    )}
-                    <code>{session.id_face_path || EMPTY_VALUE}</code>
-                  </motion.div>
-
-                  <motion.div className="media-card" whileHover={{ y: -4, scale: 1.01 }} transition={{ duration: 0.18 }}>
-                    <div className="media-card__title">Selfie Image</div>
-                    {session.selfie_path ? (
-                      <ProtectedMediaPreview
-                        adminKey={adminKey}
-                        url={buildAdminMediaUrl(session.session_id, 'selfie')}
-                        alt="Selfie"
-                      />
-                    ) : (
-                      <div className="media-fallback">No selfie image available.</div>
-                    )}
-                    <code>{session.selfie_path || EMPTY_VALUE}</code>
-                  </motion.div>
+              <SectionCard title="Evidence Gallery" hint="ID image, extracted face, selfie, and liveness evidence from protected admin endpoints.">
+                <div className="media-grid media-grid--four">
+                  <EvidenceMediaCard
+                    title="ID Document"
+                    path={session.document_path}
+                    adminKey={adminKey}
+                    url={buildAdminMediaUrl(session.session_id, 'document')}
+                    alt="ID document"
+                    onEnlarge={(url) => setEnlargedMedia({ url, alt: 'ID document', kind: 'image' })}
+                  />
+                  <EvidenceMediaCard
+                    title="ID Face Crop"
+                    path={session.id_face_path}
+                    adminKey={adminKey}
+                    url={buildAdminMediaUrl(session.session_id, 'id_face')}
+                    alt="ID face"
+                    onEnlarge={(url) => setEnlargedMedia({ url, alt: 'ID face', kind: 'image' })}
+                  />
+                  <EvidenceMediaCard
+                    title="Selfie"
+                    path={session.selfie_path}
+                    adminKey={adminKey}
+                    url={buildAdminMediaUrl(session.session_id, 'selfie')}
+                    alt="Selfie"
+                    onEnlarge={(url) => setEnlargedMedia({ url, alt: 'Selfie', kind: 'image' })}
+                  />
+                  <EvidenceMediaCard
+                    title="Liveness Video"
+                    path={session.liveness_video_path}
+                    adminKey={adminKey}
+                    url={buildAdminMediaUrl(session.session_id, 'liveness_video')}
+                    alt="Liveness video"
+                    kind="video"
+                    onEnlarge={(url) => setEnlargedMedia({ url, alt: 'Liveness video', kind: 'video' })}
+                  />
                 </div>
                 <motion.div
                   className="match-score-panel"
@@ -287,6 +294,10 @@ export function SessionDetailPage() {
 
             <aside className="detail-layout__side">
               <SectionCard title="Manual Decision" hint="Review the biometric evidence before approving or rejecting.">
+                <div className="decision-panel-title">
+                  <strong>Operator decision controls</strong>
+                  <span>Final action is saved to the audit record.</span>
+                </div>
                 <label className="field">
                   <span>Admin note</span>
                   <textarea
@@ -373,7 +384,49 @@ export function SessionDetailPage() {
           </div>
         </>
       ) : null}
+      {enlargedMedia ? (
+        <div className="media-modal" role="dialog" aria-modal="true" onClick={() => setEnlargedMedia(null)}>
+          <button type="button" className="media-modal__close" onClick={() => setEnlargedMedia(null)}>
+            Close
+          </button>
+          {enlargedMedia.kind === 'video' ? (
+            <video src={enlargedMedia.url} controls className="media-modal__asset" />
+          ) : (
+            <img src={enlargedMedia.url} alt={enlargedMedia.alt} className="media-modal__asset" />
+          )}
+        </div>
+      ) : null}
     </Shell>
+  );
+}
+
+function EvidenceMediaCard({
+  title,
+  path,
+  adminKey,
+  url,
+  alt,
+  kind = 'image',
+  onEnlarge,
+}: {
+  title: string;
+  path: string | null;
+  adminKey: string;
+  url: string;
+  alt: string;
+  kind?: 'image' | 'video';
+  onEnlarge: (url: string) => void;
+}) {
+  return (
+    <motion.div className="media-card" whileHover={{ y: -4, scale: 1.01 }} transition={{ duration: 0.18 }}>
+      <div className="media-card__title">{title}</div>
+      {path ? (
+        <ProtectedMediaPreview adminKey={adminKey} url={url} alt={alt} kind={kind} onEnlarge={onEnlarge} />
+      ) : (
+        <div className="media-fallback">No {title.toLowerCase()} available.</div>
+      )}
+      <code>{path || EMPTY_VALUE}</code>
+    </motion.div>
   );
 }
 
@@ -381,10 +434,14 @@ function ProtectedMediaPreview({
   adminKey,
   url,
   alt,
+  kind = 'image',
+  onEnlarge,
 }: {
   adminKey: string;
   url: string;
   alt: string;
+  kind?: 'image' | 'video';
+  onEnlarge?: (url: string) => void;
 }) {
   const [src, setSrc] = useState('');
   const [error, setError] = useState('');
@@ -435,7 +492,16 @@ function ProtectedMediaPreview({
     return <div className="media-fallback">Loading preview...</div>;
   }
 
-  return <img src={src} alt={alt} className="media-preview" />;
+  return (
+    <button type="button" className="media-preview-button" onClick={() => onEnlarge?.(src)}>
+      {kind === 'video' ? (
+        <video src={src} className="media-preview" muted playsInline />
+      ) : (
+        <img src={src} alt={alt} className="media-preview" />
+      )}
+      <span>Click to enlarge</span>
+    </button>
+  );
 }
 
 function getSessionFaceDistance(session: SessionDetail) {

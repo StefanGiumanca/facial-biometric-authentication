@@ -5,11 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { API_BASE_URL, getKyc } from '@/constants/api';
 import {
+  BiometricPulse,
   ChipRow,
   ConfidenceMeter,
   InfoCard,
   PageHeader,
   PrimaryButton,
+  StatusBadge,
   StatusChip,
   StepIndicator,
   vaColors,
@@ -107,65 +109,70 @@ export default function ResultScreen() {
   const confidence = getConfidenceScore(matchResult);
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <StepIndicator currentStep={5} label="Verification result" />
-        <PageHeader title="Digital ticket" subtitle="Generated from the current VisionAuth eKYC session." />
+    <View style={styles.root}>
+      <SafeAreaView style={styles.screen}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <StepIndicator currentStep={5} label="Verification result" />
+          <PageHeader eyebrow="Digital ticket" title="Verification pass" subtitle="Generated from the current VisionAuth eKYC session." />
 
-        <View style={[styles.ticketCard, { borderColor: ticket.color }]}>
-          <View style={styles.ticketHeader}>
-            <View>
-              <Text style={styles.brand}>VisionAuth</Text>
-              <Text style={styles.ticketType}>Secure verification pass</Text>
+          <View style={[styles.ticketCard, { borderColor: ticket.color }]}>
+            <View style={styles.ticketHeader}>
+              <View>
+                <Text style={styles.brand}>VisionAuth</Text>
+                <Text style={styles.ticketType}>Secure verification pass</Text>
+              </View>
+              <VerificationCode sessionId={status?.session_id} />
             </View>
-            <VerificationCode sessionId={status?.session_id} />
+
+            <View style={styles.sealRow}>
+              <BiometricPulse label={ticket.badge === 'VERIFIED' ? 'OK' : 'VA'} size={118} />
+              <View style={styles.sealCopy}>
+                <StatusBadge label={ticket.badge} tone={ticket.tone} />
+                <Text style={styles.ticketTitle}>{ticket.title}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.ticketDescription}>{ticket.description}</Text>
+
+            <View style={styles.meterCard}>
+              <ConfidenceMeter value={confidence} label="Face match confidence" tone={ticket.tone} />
+              <Text style={styles.distanceText}>Distance: {isLoading ? 'Checking...' : faceDistance}</Text>
+            </View>
+
+            <ChipRow>
+              <StatusChip label={status?.document_uploaded ? 'ID captured' : 'ID pending'} tone={status?.document_uploaded ? 'green' : 'slate'} />
+              <StatusChip label={status?.selfie_uploaded ? 'Selfie captured' : 'Selfie pending'} tone={status?.selfie_uploaded ? 'green' : 'slate'} />
+              <StatusChip label={status?.liveness_passed ? 'Liveness passed' : 'Liveness pending'} tone={status?.liveness_passed ? 'green' : 'amber'} />
+            </ChipRow>
           </View>
 
-          <View style={[styles.badge, { backgroundColor: ticket.badgeBackground, borderColor: ticket.color }]}>
-            <Text style={[styles.badgeText, { color: ticket.color }]}>{ticket.badge}</Text>
+          <InfoCard title="Identity" style={styles.section}>
+            <DetailRow label="Name" value={fullName} />
+            <DetailRow label="Backend decision" value={isLoading ? 'Checking...' : decision ?? ticket.badge} />
+          </InfoCard>
+
+          <InfoCard title="Session" style={styles.section}>
+            <DetailRow label="Session ID" value={isLoading ? 'Checking...' : String(status?.session_id ?? 'Unavailable')} />
+            <DetailRow label="Status" value={String(matchResult?.session_status || decision || 'Checking')} />
+          </InfoCard>
+
+          <InfoCard title="Biometric result" style={styles.section}>
+            <DetailRow label="Face match distance" value={isLoading ? 'Checking...' : faceDistance} />
+            <DetailRow label="Liveness" value={status?.liveness_passed ? 'Passed' : isLoading ? 'Checking...' : 'Pending'} />
+          </InfoCard>
+
+          <InfoCard title="Timestamp" style={styles.section}>
+            <DetailRow label="Generated" value={new Date().toLocaleString()} />
+          </InfoCard>
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <View style={styles.actions}>
+            <PrimaryButton label="Start new verification" onPress={returnToStart} />
           </View>
-
-          <Text style={styles.ticketTitle}>{ticket.title}</Text>
-          <Text style={styles.ticketDescription}>{ticket.description}</Text>
-
-          <View style={styles.meterCard}>
-            <ConfidenceMeter value={confidence} label="Face match confidence" tone={ticket.tone} />
-            <Text style={styles.distanceText}>Distance: {isLoading ? 'Checking...' : faceDistance}</Text>
-          </View>
-
-          <ChipRow>
-            <StatusChip label={status?.document_uploaded ? 'ID captured' : 'ID pending'} tone={status?.document_uploaded ? 'green' : 'slate'} />
-            <StatusChip label={status?.selfie_uploaded ? 'Selfie captured' : 'Selfie pending'} tone={status?.selfie_uploaded ? 'green' : 'slate'} />
-            <StatusChip label={status?.liveness_passed ? 'Liveness passed' : 'Liveness pending'} tone={status?.liveness_passed ? 'green' : 'amber'} />
-          </ChipRow>
-        </View>
-
-        <InfoCard title="Identity" style={styles.section}>
-          <DetailRow label="Name" value={fullName} />
-          <DetailRow label="Backend decision" value={isLoading ? 'Checking...' : decision ?? ticket.badge} />
-        </InfoCard>
-
-        <InfoCard title="Session" style={styles.section}>
-          <DetailRow label="Session ID" value={isLoading ? 'Checking...' : String(status?.session_id ?? 'Unavailable')} />
-          <DetailRow label="Status" value={String(matchResult?.session_status || decision || 'Checking')} />
-        </InfoCard>
-
-        <InfoCard title="Biometric result" style={styles.section}>
-          <DetailRow label="Face match distance" value={isLoading ? 'Checking...' : faceDistance} />
-          <DetailRow label="Liveness" value={status?.liveness_passed ? 'Passed' : isLoading ? 'Checking...' : 'Pending'} />
-        </InfoCard>
-
-        <InfoCard title="Timestamp" style={styles.section}>
-          <DetailRow label="Generated" value={new Date().toLocaleString()} />
-        </InfoCard>
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <View style={styles.actions}>
-          <PrimaryButton label="Start new verification" onPress={returnToStart} />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -361,11 +368,19 @@ function getConfidenceScore(matchResult: FaceMatchResult | null) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
+    backgroundColor: vaColors.background,
     flex: 1,
+  },
+  screen: {
+    backgroundColor: vaColors.background,
+    flex: 1,
+  },
+  scroll: {
     backgroundColor: vaColors.background,
   },
   content: {
+    backgroundColor: vaColors.background,
     flexGrow: 1,
     padding: 24,
   },
@@ -384,6 +399,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  sealRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 14,
+  },
+  sealCopy: {
+    flex: 1,
+    gap: 10,
   },
   brand: {
     color: vaColors.text,
@@ -417,23 +441,11 @@ const styles = StyleSheet.create({
   codePixelActive: {
     backgroundColor: '#0F172A',
   },
-  badge: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-  },
-  badgeText: {
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
   ticketTitle: {
     color: vaColors.text,
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '900',
-    lineHeight: 38,
+    lineHeight: 33,
   },
   ticketDescription: {
     color: vaColors.subtle,

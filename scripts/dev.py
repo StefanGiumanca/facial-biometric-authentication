@@ -34,11 +34,16 @@ def main() -> int:
     config = load_config(config_path)
     processes: list[subprocess.Popen[str]] = []
 
+    host_ip = get_lan_ip()
     env = os.environ.copy()
     env["DATABASE_URL"] = config["database_url"]
     env["ADMIN_KEY"] = config.get("admin_key", "dev-admin-key")
     env["EXPO_PUBLIC_CONNECTION_MODE"] = args.connection
     env["VITE_CONNECTION_MODE"] = args.connection
+    env["EXPO_PUBLIC_WIFI_API_BASE_URL"] = f"http://{host_ip}:8000"
+    env["EXPO_PUBLIC_WIFI_WEB_ADMIN_URL"] = f"http://{host_ip}:5173"
+    env["VITE_WIFI_API_BASE_URL"] = f"http://{host_ip}:8000"
+    env["REACT_NATIVE_PACKAGER_HOSTNAME"] = host_ip
 
     try:
         start_postgres(config)
@@ -56,7 +61,7 @@ def main() -> int:
             env["VITE_NGROK_API_BASE_URL"] = ngrok_url
 
         processes.extend(start_services(config, env, skip={"backend"}, connection=args.connection))
-        print_urls(args.connection, ngrok_url)
+        print_urls(args.connection, host_ip, ngrok_url)
         wait_until_interrupted(processes)
     except KeyboardInterrupt:
         print("\n[dev] Stopping VisionAuth stack...")
@@ -179,6 +184,11 @@ def start_service(
     command = build_service_command(key, service["command"], connection)
     cwd = ROOT / service.get("cwd", ".")
     print(f"[{label}] Starting with: {' '.join(command)}")
+    if key == "mobile":
+        process = subprocess.Popen(command, cwd=cwd, env=env)
+        time.sleep(0.5)
+        return process
+
     process = subprocess.Popen(
         command,
         cwd=cwd,
@@ -256,8 +266,7 @@ def stream_output(label: str, process: subprocess.Popen[str]) -> None:
         print(f"[{label}] {line}", end="")
 
 
-def print_urls(connection: str, ngrok_url: str | None = None) -> None:
-    host_ip = get_lan_ip()
+def print_urls(connection: str, host_ip: str, ngrok_url: str | None = None) -> None:
     print("\n[dev] VisionAuth is starting. Use these entry points:")
     print("[dev] Swagger / API docs:      http://127.0.0.1:8000/docs")
     print("[dev] Backend health/root:     http://127.0.0.1:8000")

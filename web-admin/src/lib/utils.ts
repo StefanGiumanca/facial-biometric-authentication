@@ -44,7 +44,12 @@ export function matchesFilter(session: AdminSession, filter: SessionFilter) {
   }
 
   if (filter === 'MANUAL_REVIEW') {
-    return decision === 'MANUAL_REVIEW';
+    return [
+      decision,
+      session.status,
+      session.face_match_decision,
+      session.final_face_match_decision,
+    ].some((value) => String(value || '').toUpperCase() === 'MANUAL_REVIEW');
   }
 
   return !['VERIFIED', 'ACCEPTED', 'APPROVED', 'REJECTED', 'MANUAL_REVIEW'].includes(decision);
@@ -103,6 +108,7 @@ export function sessionMatchesSearch(session: AdminSession, searchTerm: string) 
     session.last_name,
     session.cnp,
     session.session_id,
+    session.series_number,
     session.final_decision,
     session.face_match_decision,
     session.final_face_match_decision,

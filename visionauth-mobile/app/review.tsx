@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getKyc, postKycJson, type ApiError, type ApiResponse } from '@/constants/api';
 import {
+  AppBackground,
   ChipRow,
   InfoCard,
   PageHeader,
@@ -182,53 +183,61 @@ export default function ReviewScreen() {
   const attentionCount = Object.keys(fieldErrors).length;
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <StepIndicator currentStep={2} label="Identity review" />
-        <PageHeader
-          title="Review your data"
-          subtitle="This information was extracted automatically from your ID. Correct any value before continuing."
-        />
+    <AppBackground>
+      <SafeAreaView style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <StepIndicator currentStep={2} label="Identity review" />
+          <PageHeader
+            eyebrow="OCR review"
+            title="Confirm identity data"
+            subtitle="Review the extracted fields and correct anything that does not match your ID."
+          />
 
-        {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
 
-        <View style={styles.form}>
-          {groupedFields.map((section) => (
-            <InfoCard key={section.title} title={section.title} style={styles.sectionCard}>
-              {section.fields.map((field, index) => (
-                <View key={field} style={[styles.fieldGroup, index === section.fields.length - 1 && styles.fieldGroupLast]}>
-                  <View style={styles.fieldHeader}>
-                    <Text style={styles.label}>{formatFieldLabel(field)}</Text>
-                    <StatusChip label={getFieldStatusLabel(values[field], fieldErrors[field])} tone={getFieldStatusTone(values[field], fieldErrors[field])} />
+          <InfoCard title="Review status" style={styles.reviewStatusCardTop}>
+            <ChipRow>
+              <StatusChip label={`${completedCount}/${editableFields.length} completed`} tone="blue" />
+              <StatusChip label={attentionCount ? `${attentionCount} need review` : 'Ready for validation'} tone={attentionCount ? 'amber' : 'green'} />
+            </ChipRow>
+          </InfoCard>
+
+          <View style={styles.form}>
+            {groupedFields.map((section) => (
+              <InfoCard key={section.title} title={section.title} style={styles.sectionCard}>
+                {section.fields.map((field, index) => (
+                  <View key={field} style={[styles.fieldGroup, index === section.fields.length - 1 && styles.fieldGroupLast]}>
+                    <View style={styles.fieldHeader}>
+                      <View style={styles.fieldTitleRow}>
+                        <View style={[styles.fieldIcon, fieldErrors[field] && styles.fieldIconError]}>
+                          <Text style={styles.fieldIconText}>{formatFieldLabel(field).slice(0, 1)}</Text>
+                        </View>
+                        <Text style={styles.label}>{formatFieldLabel(field)}</Text>
+                      </View>
+                      <StatusChip label={getFieldStatusLabel(values[field], fieldErrors[field])} tone={getFieldStatusTone(values[field], fieldErrors[field])} />
+                    </View>
+                    <TextInput
+                      autoCapitalize={field === 'cnp' ? 'none' : 'words'}
+                      keyboardType={field === 'cnp' || field === 'number' ? 'number-pad' : 'default'}
+                      multiline={field === 'address'}
+                      numberOfLines={field === 'address' ? 3 : 1}
+                      onChangeText={(value) => updateField(field, value)}
+                      placeholder="Not detected"
+                      placeholderTextColor="#64748B"
+                      style={[styles.input, fieldErrors[field] && styles.inputError, field === 'address' && styles.addressInput]}
+                      value={values[field] ?? ''}
+                    />
+                    {fieldErrors[field] ? <Text style={styles.fieldError}>{fieldErrors[field]}</Text> : null}
                   </View>
-                  <TextInput
-                    autoCapitalize={field === 'cnp' ? 'none' : 'words'}
-                    keyboardType={field === 'cnp' || field === 'number' ? 'number-pad' : 'default'}
-                    multiline={field === 'address'}
-                    numberOfLines={field === 'address' ? 3 : 1}
-                    onChangeText={(value) => updateField(field, value)}
-                    placeholder="Not detected"
-                    placeholderTextColor="#64748B"
-                    style={[styles.input, fieldErrors[field] && styles.inputError, field === 'address' && styles.addressInput]}
-                    value={values[field] ?? ''}
-                  />
-                  {fieldErrors[field] ? <Text style={styles.fieldError}>{fieldErrors[field]}</Text> : null}
-                </View>
-              ))}
-            </InfoCard>
-          ))}
-        </View>
+                ))}
+              </InfoCard>
+            ))}
+          </View>
 
-        <InfoCard title="Review status" style={styles.reviewStatusCard}>
-          <ChipRow>
-            <StatusChip label={`${completedCount}/${editableFields.length} completed`} tone="blue" />
-            <StatusChip label={attentionCount ? `${attentionCount} need review` : 'Ready for validation'} tone={attentionCount ? 'amber' : 'green'} />
-          </ChipRow>
-        </InfoCard>
-
-        <PrimaryButton label={isValidating ? 'Validating identity data...' : 'Confirm and continue'} onPress={confirmReview} disabled={isValidating} />
-      </ScrollView>
-    </SafeAreaView>
+          <PrimaryButton label={isValidating ? 'Validating identity data...' : 'Confirm and continue'} onPress={confirmReview} disabled={isValidating} />
+        </ScrollView>
+      </SafeAreaView>
+    </AppBackground>
   );
 }
 
@@ -410,7 +419,6 @@ function getFieldStatusTone(value: string | undefined, error: string | undefined
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: vaColors.background,
   },
   content: {
     flexGrow: 1,
@@ -450,6 +458,31 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: 'space-between',
   },
+  fieldTitleRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  fieldIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(37, 99, 235, 0.18)',
+    borderColor: 'rgba(96, 165, 250, 0.24)',
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  fieldIconError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.13)',
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+  },
+  fieldIconText: {
+    color: vaColors.blueSoft,
+    fontSize: 12,
+    fontWeight: '900',
+  },
   label: {
     color: vaColors.subtle,
     fontSize: 13,
@@ -479,7 +512,7 @@ const styles = StyleSheet.create({
     minHeight: 88,
     textAlignVertical: 'top',
   },
-  reviewStatusCard: {
+  reviewStatusCardTop: {
     marginBottom: 14,
   },
 });
