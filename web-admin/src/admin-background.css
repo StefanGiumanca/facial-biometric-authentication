@@ -1,0 +1,411 @@
+/* Imported after the dashboard stylesheet so the animated backdrop stays last in the cascade. */
+body {
+  background-size: 140% 140%, 132% 132%, 100% 100%;
+  animation: adminAmbientGradient 34s ease-in-out infinite alternate;
+}
+
+.dashboard-background {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dashboard-background__grid,
+.dashboard-background__scanline,
+.dashboard-background__glow,
+.dashboard-background__pulse,
+.dashboard-particles,
+.dashboard-network {
+  position: absolute;
+  pointer-events: none;
+}
+
+.dashboard-background__grid {
+  inset: -12%;
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(96, 165, 250, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 165, 250, 0.06) 1px, transparent 1px);
+  background-size: 58px 58px;
+  mask-image: radial-gradient(ellipse at center, black 20%, rgba(0, 0, 0, 0.72) 58%, transparent 82%);
+  transform: translate3d(0, 0, 0);
+  animation: dashboardGridMove 42s linear infinite;
+}
+
+.dashboard-background__glow {
+  border-radius: 999px;
+  filter: blur(72px);
+  opacity: 0.065;
+  transform: translate3d(0, 0, 0);
+}
+
+.dashboard-background__glow--blue {
+  top: -10rem;
+  left: 9%;
+  width: min(32rem, 45vw);
+  height: min(28rem, 42vw);
+  background: #2563eb;
+  animation: dashboardGlowBlue 36s ease-in-out infinite;
+}
+
+.dashboard-background__glow--cyan {
+  top: 18%;
+  right: -8rem;
+  width: min(30rem, 42vw);
+  height: min(30rem, 42vw);
+  background: #06b6d4;
+  animation: dashboardGlowCyan 44s ease-in-out infinite;
+}
+
+.dashboard-background__glow--violet {
+  bottom: -11rem;
+  left: 38%;
+  width: min(25rem, 36vw);
+  height: min(23rem, 34vw);
+  background: #7c3aed;
+  opacity: 0.042;
+  animation: dashboardGlowViolet 48s ease-in-out infinite;
+}
+
+.dashboard-background__scanline {
+  top: -16vh;
+  right: -5vw;
+  left: -5vw;
+  height: 11vh;
+  opacity: 0.032;
+  background: linear-gradient(180deg, transparent, rgba(125, 211, 252, 0.72), transparent);
+  filter: blur(18px);
+  transform: translate3d(0, -18vh, 0);
+  animation: dashboardScanline 27s linear infinite;
+}
+
+.dashboard-background__pulse {
+  width: 10.5rem;
+  height: 10.5rem;
+  border: 1px solid rgba(96, 165, 250, 0.14);
+  border-radius: 999px;
+  opacity: 0;
+  filter: blur(0.2px);
+  transform: translate3d(0, 0, 0) scale(0.32);
+}
+
+.dashboard-background__pulse::after {
+  content: '';
+  position: absolute;
+  inset: 1.35rem;
+  border: 1px solid rgba(34, 211, 238, 0.1);
+  border-radius: inherit;
+}
+
+.dashboard-background__pulse--one {
+  top: 18%;
+  left: 22%;
+  animation: dashboardPulse 18s ease-out infinite;
+}
+
+.dashboard-background__pulse--two {
+  right: 19%;
+  bottom: 20%;
+  animation: dashboardPulse 22s ease-out -9s infinite;
+}
+
+.dashboard-particles {
+  inset: 0;
+}
+
+.dashboard-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  opacity: 0.14;
+  background: rgba(191, 219, 254, 0.92);
+  box-shadow: 0 0 9px rgba(96, 165, 250, 0.36);
+  transform: translate3d(0, 0, 0);
+  animation-name: dashboardParticleFloat;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.dashboard-particle:nth-child(3n) {
+  width: 1px;
+  height: 1px;
+  opacity: 0.11;
+}
+
+.dashboard-particle:nth-child(4n) {
+  background: rgba(165, 243, 252, 0.9);
+}
+
+.dashboard-network {
+  inset: 0;
+  opacity: 0.085;
+}
+
+.dashboard-network__segment {
+  position: absolute;
+  width: clamp(8rem, 13vw, 13rem);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.58), transparent);
+  transform-origin: left center;
+  animation: dashboardNetworkBlink 15s ease-in-out infinite;
+}
+
+.dashboard-network__segment::before,
+.dashboard-network__segment::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.78);
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.28);
+}
+
+.dashboard-network__segment::before {
+  left: 0;
+}
+
+.dashboard-network__segment::after {
+  right: 0;
+}
+
+.dashboard-network__segment--one {
+  top: 22%;
+  right: 19%;
+  rotate: 14deg;
+}
+
+.dashboard-network__segment--two {
+  bottom: 27%;
+  left: 18%;
+  rotate: -18deg;
+  animation-delay: -6s;
+}
+
+.dashboard-network__segment--three {
+  top: 58%;
+  right: 34%;
+  rotate: -7deg;
+  animation-delay: -11s;
+}
+
+.top-nav,
+.page-header,
+.section-card,
+.metric-card,
+.command-panel,
+.insight-card,
+.evidence-strip,
+.verification-pipeline {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.top-nav::before,
+.page-header::before,
+.section-card::before,
+.metric-card::before,
+.command-panel::before,
+.insight-card::before,
+.evidence-strip::before,
+.verification-pipeline::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: -45% auto -45% -52%;
+  width: 34%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: translate3d(0, 0, 0) skewX(-18deg);
+  animation: dashboardGlassSweep 24s ease-in-out infinite;
+}
+
+.section-card::before,
+.metric-card::before {
+  animation-delay: -10s;
+}
+
+.command-panel::before,
+.insight-card::before {
+  animation-delay: -17s;
+}
+
+:root[data-theme='light'] .dashboard-background__grid {
+  opacity: 0.2;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.055) 1px, transparent 1px);
+}
+
+:root[data-theme='light'] .dashboard-background__glow {
+  opacity: 0.058;
+}
+
+:root[data-theme='light'] .dashboard-background__glow--violet {
+  opacity: 0.032;
+}
+
+:root[data-theme='light'] .dashboard-background__scanline {
+  opacity: 0.025;
+}
+
+:root[data-theme='light'] .dashboard-particle {
+  opacity: 0.12;
+  background: rgba(37, 99, 235, 0.66);
+}
+
+:root[data-theme='light'] .dashboard-network {
+  opacity: 0.07;
+}
+
+:root[data-theme='light'] .top-nav::before,
+:root[data-theme='light'] .page-header::before,
+:root[data-theme='light'] .section-card::before,
+:root[data-theme='light'] .metric-card::before,
+:root[data-theme='light'] .command-panel::before,
+:root[data-theme='light'] .insight-card::before,
+:root[data-theme='light'] .evidence-strip::before,
+:root[data-theme='light'] .verification-pipeline::before {
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.46), transparent);
+}
+
+@keyframes adminAmbientGradient {
+  0% {
+    background-position: 0% 0%, 100% 0%, center;
+  }
+  100% {
+    background-position: 15% 8%, 84% 17%, center;
+  }
+}
+
+@keyframes dashboardGridMove {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(58px, 58px, 0);
+  }
+}
+
+@keyframes dashboardGlowBlue {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3rem, 2rem, 0) scale(1.08);
+  }
+}
+
+@keyframes dashboardGlowCyan {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-3rem, 2.5rem, 0) scale(1.1);
+  }
+}
+
+@keyframes dashboardGlowViolet {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-2.5rem, -2rem, 0) scale(1.06);
+  }
+}
+
+@keyframes dashboardScanline {
+  0% {
+    transform: translate3d(0, -18vh, 0);
+  }
+  100% {
+    transform: translate3d(0, 126vh, 0);
+  }
+}
+
+@keyframes dashboardPulse {
+  0%,
+  58% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.32);
+  }
+  68% {
+    opacity: 0.09;
+  }
+  86% {
+    opacity: 0.025;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(1.35);
+  }
+}
+
+@keyframes dashboardParticleFloat {
+  0%,
+  100% {
+    opacity: 0.07;
+    transform: translate3d(0, 0, 0);
+  }
+  45% {
+    opacity: 0.19;
+    transform: translate3d(0.65rem, -1.15rem, 0);
+  }
+  72% {
+    opacity: 0.12;
+    transform: translate3d(-0.45rem, -0.5rem, 0);
+  }
+}
+
+@keyframes dashboardNetworkBlink {
+  0%,
+  100% {
+    opacity: 0.24;
+  }
+  48% {
+    opacity: 0.88;
+  }
+}
+
+@keyframes dashboardGlassSweep {
+  0%,
+  72% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) skewX(-18deg);
+  }
+  78% {
+    opacity: 0.1;
+  }
+  90% {
+    opacity: 0;
+    transform: translate3d(470%, 0, 0) skewX(-18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(470%, 0, 0) skewX(-18deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .dashboard-background *,
+  .top-nav::before,
+  .page-header::before,
+  .section-card::before,
+  .metric-card::before,
+  .command-panel::before,
+  .insight-card::before,
+  .evidence-strip::before,
+  .verification-pipeline::before {
+    animation: none;
+  }
+}

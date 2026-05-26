@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { formatDateTime, getStatusTone } from './lib/utils';
 import { useTheme } from './theme';
+import { AnimatedDashboardBackground } from './components/AnimatedDashboardBackground';
 
 const cardMotion = {
   initial: { opacity: 0, y: 18, scale: 0.985 },
@@ -15,9 +16,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="shell">
-      <div className="shell__backdrop shell__backdrop--one" />
-      <div className="shell__backdrop shell__backdrop--two" />
-      <div className="shell__grid" />
+      <AnimatedDashboardBackground />
       <aside className="sidebar">
         <Link to="/" className="sidebar__brand">
           <span className="sidebar__brand-mark">VA</span>
